@@ -63,8 +63,16 @@
 
 :root {
   --radius: 0.625rem;
-  --background: oklch(1 0 0);
-  --foreground: oklch(0.129 0.042 264.695);
+  /* TA&I brand: beige #FAF7F2, olive #6B8E6B, gold #D4A55A, dark #2C2C2C */
+  --background: oklch(0.974 0.008 85);
+  --foreground: oklch(0.265 0 0);
+  --brand-olive: oklch(0.58 0.06 145);
+  --brand-olive-foreground: oklch(0.99 0 0);
+  --brand-gold: oklch(0.74 0.12 75);
+  --brand-gold-foreground: oklch(0.2 0 0);
+  --brand-dark: oklch(0.265 0 0);
+  --brand-beige: oklch(0.974 0.008 85);
+  --brand-beige-soft: oklch(0.95 0.012 85);
   --card: oklch(1 0 0);
   --card-foreground: oklch(0.129 0.042 264.695);
   --popover: oklch(1 0 0);
