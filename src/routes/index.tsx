@@ -88,14 +88,16 @@ function Index() {
                 className="inline-block px-8 py-3 rounded-xl font-semibold transition-all hover:opacity-90 active:scale-[0.98]"
                 style={{ backgroundColor: "var(--brand-olive)", color: "var(--brand-olive-foreground)" }}
               >
-                Contacter Henri
+                Audit TA&amp;I
               </a>
               <a
-                href="mailto:contact@taifood.com"
+                href="https://tai-food.com/temoignages/"
+                target="_blank"
+                rel="noopener noreferrer"
                 className="inline-block px-8 py-3 rounded-xl font-semibold transition-all hover:opacity-90 active:scale-[0.98] border"
                 style={{ borderColor: "var(--brand-olive)", color: "var(--brand-olive)" }}
               >
-                Envoyer un email
+                Témoignages
               </a>
             </div>
             <p className="mt-6 text-sm sm:text-base italic" style={{ opacity: 0.8 }}>
