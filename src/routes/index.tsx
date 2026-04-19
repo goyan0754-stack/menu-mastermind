@@ -7,9 +7,9 @@ export const Route = createFileRoute("/")({
   component: Index,
   head: () => ({
     meta: [
-      { title: "TA&I Analyzer by Zoran — Analysez vos descriptions de plats" },
+      { title: "TA&I Analyzer — Analysez vos descriptions de plats" },
       { name: "description", content: "Découvrez pourquoi vos clients passent à côté de vos meilleurs plats. Analysez gratuitement vos descriptions et obtenez des recommandations." },
-      { property: "og:title", content: "TA&I Analyzer by Zoran" },
+      { property: "og:title", content: "TA&I Analyzer" },
       { property: "og:description", content: "Découvrez pourquoi vos clients passent à côté de vos meilleurs plats." },
     ],
     links: [
@@ -37,7 +37,7 @@ function Index() {
       <main className="flex-1 w-full max-w-3xl mx-auto px-5 sm:px-8 py-12 sm:py-20">
         <header className="text-center mb-10 sm:mb-14">
           <h1 className="text-4xl sm:text-5xl font-bold tracking-tight">
-            TA&amp;I Analyzer <span style={{ color: "var(--brand-olive)" }}>by Zoran</span>
+            TA&amp;I <span style={{ color: "var(--brand-olive)" }}>Analyzer</span>
           </h1>
           <p className="mt-4 text-lg sm:text-xl" style={{ opacity: 0.8 }}>
             Découvrez pourquoi vos clients passent à côté de vos meilleurs plats.
