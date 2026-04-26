@@ -46,17 +46,35 @@ button:disabled{opacity:0.5;cursor:not-allowed}
 const { useState, useEffect, useCallback } = React;
 
 // ╔══════════════════════════════════════════════════════╗
-// ║  CONFIG FRONTEND — valeurs non sensibles uniquement  ║
-// ║  Clés API gérées côté serveur dans /api/             ║
+// ║  CONFIG — COLLE TES 5 VALEURS ICI, C'EST TOUT        ║
 // ╚══════════════════════════════════════════════════════╝
 const CONFIG = {
-  SHEET_ID:        "137tAykDIpaSsTkjjFzPuw4rOCKw5UXnCh540WGduU08",
-  STRIPE_URL_9EUR:  "https://buy.stripe.com/9B6fZhbSZdxxbPNdZ8d7q02",
-  STRIPE_URL_29EUR: "https://buy.stripe.com/7sYdR9cX38dd075bR0d7q03",
+  ANTHROPIC_API_KEY:  "",
+  SHEETS_WEBHOOK:     "",
+  SHEET_ID:           "137tAykDIpaSsTkjjFzPuw4rOCKw5UXnCh540WGduU08",
+  STRIPE_URL_9EUR:    "https://buy.stripe.com/9B6fZhbSZdxxbPNdZ8d7q02",
+  STRIPE_URL_29EUR:   "https://buy.stripe.com/7sYdR9cX38dd075bR0d7q03",
   FREE_QUOTA: 3, PRICE_UNIT: 9, PRICE_ABO: 29,
 };
 
-// Prompt Zoran retiré du frontend — il réside uniquement dans api/generate.js (côté serveur)
+const ZORAN_PROMPT = `Tu es ZORAN CMO ENGINE v3.0 — moteur de copywriting food d'Henri F. / TA&I. 16 ans d'experience terrain cuisine, bar, salle. Expert neuro-marketing food.
+
+REGLES ABSOLUES :
+- Applique l'une des 10 formules TA&I selon le type de plat
+- Calcule Score S = (beta x DeltaPhi) / (T x sigma)
+  beta (0.10-1.00) : Direction strategique
+  DeltaPhi (0.10-1.00) : Densite informationnelle
+  T (0.10-1.00) : Friction cognitive (bas = fluide)
+  sigma (0.10-1.00) : Bruit/dilution (bas = pur)
+- Score S cible >= 15, jamais < 8
+- 2 variantes A et B obligatoires
+- 1 brief image Ideogram.ai
+- Langue francaise impeccable
+
+10 FORMULES : 1-Origine Racontee 2-Chiffre de Confiance 3-Nostalgie Activee 4-Technique Revelee 5-Promesse Sensorielle 6-Contraste Inattendu 7-Producteur Nomme 8-Transformation Visible 9-Rarete Annoncee 10-Lecon Qui Vend
+
+REPONSE JSON STRICT (rien d'autre, pas de backticks) :
+{"formule_utilisee":"","formule_raison":"","variante_a":{"titre":"","description":"","score_s":0,"beta":0,"delta_phi":0,"T":0,"sigma":0},"variante_b":{"titre":"","description":"","score_s":0,"beta":0,"delta_phi":0,"T":0,"sigma":0},"brief_image":{"outil":"Ideogram.ai","url":"https://ideogram.ai","prompt":"","format":"1080x1080"},"conseil_pro":""}`;
 
 // Utilitaires
 const Store = {
@@ -78,13 +96,9 @@ const Store = {
 };
 
 async function log(data) {
-  try {
-    await fetch('/api/log', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(data)
-    });
-  } catch(e) { console.warn('Log:', e.message); }
+  if (!CONFIG.SHEETS_WEBHOOK || CONFIG.SHEETS_WEBHOOK==='VOTRE_URL_APPS_SCRIPT') return;
+  try { await fetch(CONFIG.SHEETS_WEBHOOK,{method:'POST',mode:'no-cors',headers:{'Content-Type':'application/json'},body:JSON.stringify({...data,timestamp:new Date().toISOString()})}); }
+  catch(e) { console.warn('Sheets:',e.message); }
 }
 
 async function loadAdminData() {
@@ -102,14 +116,11 @@ async function loadAdminData() {
 
 async function callZoran(d) {
   const r = await fetch('/api/generate', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({
-      resto: d.resto,
-      nom_plat: d.nom_plat,
-      type_plat: d.type_plat,
-      description_actuelle: d.description_actuelle,
-      infos: d.infos || ''
+    method:'POST',
+    headers:{'Content-Type':'application/json'},
+    body:JSON.stringify({
+      resto:d.resto, nom_plat:d.nom_plat, type_plat:d.type_plat,
+      description_actuelle:d.description_actuelle, infos:d.infos||''
     })
   });
   if (!r.ok) { const e=await r.json().catch(()=>({})); throw new Error(e.error||`Erreur ${r.status}`); }
@@ -226,6 +237,7 @@ function GenForm({usage,onResult,onLogout}) {
   const isIllimite = usage.plan === 'illimite' || usage.plan === 'offert';
   const go=async()=>{
     if(!nomPlat.trim()||!descActuelle.trim()){setErr('Nom du plat et description requis.');return;}
+    if(CONFIG.ANTHROPIC_API_KEY==='VOTRE_CLE_API_ANTHROPIC'){setErr('Clé API Anthropic non configurée dans CONFIG.');return;}
     setErr('');setLoading(true);
     try {
       const res=await callZoran({nom_plat:nomPlat,type_plat:typePlat,description_actuelle:descActuelle,infos,resto:usage.resto});
@@ -553,11 +565,11 @@ function AdminLogin({onLogin}) {
   const [loading,setLoading]=useState(false);
   const go=async()=>{
     setLoading(true);
-    try {
+    try{
       const r=await fetch('/api/admin-auth',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({password:pw})});
       const d=await r.json();
       if(d.ok){setErr(false);onLogin();}else{setErr(true);setPw('');}
-    } catch{setErr(true);setPw('');}
+    }catch{setErr(true);setPw('');}
     setLoading(false);
   };
   return (
@@ -571,6 +583,410 @@ function AdminLogin({onLogin}) {
           {loading?<span className="spinner"/>:'Connexion'}
         </button>
       </div>
+    </div>
+  );
+}
+
+// ═══════════════════════════════════════════════════
+// MODULE SMART PILOTAGE — Fournisseurs + Stocks + IA
+// ═══════════════════════════════════════════════════
+
+const StorePilotage = {
+  get: () => { try { return JSON.parse(localStorage.getItem('tai_pilotage')) || { fournisseurs:[], stocks:[], chat:[] }; } catch { return { fournisseurs:[], stocks:[], chat:[] }; } },
+  save: v => localStorage.setItem('tai_pilotage', JSON.stringify(v)),
+};
+
+// ─── FOURNISSEURS ────────────────────────────────
+function FournisseursForm({ data, onSave }) {
+  const [fournisseurs, setF] = useState(data.fournisseurs || []);
+  const [nom, setNom] = useState('');
+  const [produits, setProduits] = useState('');
+  const [tel, setTel] = useState('');
+
+  const add = () => {
+    if (!nom.trim() || !produits.trim()) return;
+    const newF = [...fournisseurs, { id: Date.now(), nom: nom.trim(), produits: produits.trim(), tel: tel.trim() }];
+    setF(newF);
+    onSave({ ...data, fournisseurs: newF });
+    setNom(''); setProduits(''); setTel('');
+  };
+
+  const remove = id => {
+    const newF = fournisseurs.filter(f => f.id !== id);
+    setF(newF);
+    onSave({ ...data, fournisseurs: newF });
+  };
+
+  return (
+    <div>
+      <h3 style={{ fontSize: 15, marginBottom: 14, color: 'var(--gold2)' }}>📦 Mes fournisseurs</h3>
+      <div className="card" style={{ marginBottom: 14 }}>
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr auto', gap: 10, alignItems: 'end' }}>
+          <div>
+            <label style={{ fontSize: 11, color: 'var(--text3)', display: 'block', marginBottom: 3 }}>Nom fournisseur *</label>
+            <input placeholder="Ex: Maison Dupont" value={nom} onChange={e => setNom(e.target.value)} />
+          </div>
+          <div>
+            <label style={{ fontSize: 11, color: 'var(--text3)', display: 'block', marginBottom: 3 }}>Produits fournis *</label>
+            <input placeholder="Ex: bœuf, agneau, porc" value={produits} onChange={e => setProduits(e.target.value)} />
+          </div>
+          <div>
+            <label style={{ fontSize: 11, color: 'var(--text3)', display: 'block', marginBottom: 3 }}>Téléphone</label>
+            <input placeholder="Ex: 04 91 00 00 00" value={tel} onChange={e => setTel(e.target.value)} />
+          </div>
+          <button className="btn-gold" onClick={add} disabled={!nom || !produits} style={{ padding: '10px 16px', whiteSpace: 'nowrap' }}>+ Ajouter</button>
+        </div>
+      </div>
+      {fournisseurs.length === 0 ? (
+        <p style={{ fontSize: 13, color: 'var(--text3)', textAlign: 'center', padding: '1rem' }}>Aucun fournisseur enregistré — ajoutez-en un ci-dessus</p>
+      ) : (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+          {fournisseurs.map(f => (
+            <div key={f.id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', background: 'var(--bg3)', borderRadius: 'var(--r)', padding: '10px 14px' }}>
+              <div>
+                <p style={{ fontSize: 14, fontWeight: 500 }}>{f.nom}</p>
+                <p style={{ fontSize: 12, color: 'var(--text3)' }}>{f.produits}{f.tel ? ` · ${f.tel}` : ''}</p>
+              </div>
+              <button onClick={() => remove(f.id)} className="btn-outline" style={{ fontSize: 11, padding: '4px 10px', color: 'var(--red)', borderColor: 'var(--red2)' }}>Supprimer</button>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ─── STOCKS ──────────────────────────────────────
+function StocksForm({ data, onSave }) {
+  const [stocks, setS] = useState(data.stocks || []);
+  const [nom, setNom] = useState('');
+  const [actuel, setActuel] = useState('');
+  const [unite, setUnite] = useState('kg');
+  const [conso, setConso] = useState('');
+  const [seuil, setSeuil] = useState('');
+
+  const add = () => {
+    if (!nom.trim() || !actuel || !conso) return;
+    const newS = [...stocks, {
+      id: Date.now(),
+      nom: nom.trim(),
+      actuel: parseFloat(actuel),
+      unite: unite,
+      conso_semaine: parseFloat(conso),
+      seuil_alerte: parseFloat(seuil) || parseFloat(conso) * 0.5,
+    }];
+    setS(newS);
+    onSave({ ...data, stocks: newS });
+    setNom(''); setActuel(''); setConso(''); setSeuil('');
+  };
+
+  const remove = id => {
+    const newS = stocks.filter(s => s.id !== id);
+    setS(newS);
+    onSave({ ...data, stocks: newS });
+  };
+
+  const getEtat = s => {
+    const ratio = s.actuel / s.conso_semaine;
+    if (ratio <= 0.5) return { label: '🔴 Urgent', color: 'var(--red)' };
+    if (ratio <= 1)   return { label: '🟡 Alerte', color: 'var(--gold)' };
+    return { label: '🟢 OK', color: 'var(--green)' };
+  };
+
+  return (
+    <div>
+      <h3 style={{ fontSize: 15, marginBottom: 14, color: 'var(--gold2)' }}>📊 Mes stocks actuels</h3>
+      <div className="card" style={{ marginBottom: 14 }}>
+        <div style={{ display: 'grid', gridTemplateColumns: '2fr 1fr 0.7fr 1fr 1fr auto', gap: 10, alignItems: 'end' }}>
+          <div>
+            <label style={{ fontSize: 11, color: 'var(--text3)', display: 'block', marginBottom: 3 }}>Produit *</label>
+            <input placeholder="Ex: Bœuf haché" value={nom} onChange={e => setNom(e.target.value)} />
+          </div>
+          <div>
+            <label style={{ fontSize: 11, color: 'var(--text3)', display: 'block', marginBottom: 3 }}>Stock actuel *</label>
+            <input type="number" placeholder="Ex: 5" value={actuel} onChange={e => setActuel(e.target.value)} />
+          </div>
+          <div>
+            <label style={{ fontSize: 11, color: 'var(--text3)', display: 'block', marginBottom: 3 }}>Unité</label>
+            <select value={unite} onChange={e => setUnite(e.target.value)}>
+              <option value="kg">kg</option>
+              <option value="L">L</option>
+              <option value="pièces">pcs</option>
+              <option value="boîtes">boîtes</option>
+            </select>
+          </div>
+          <div>
+            <label style={{ fontSize: 11, color: 'var(--text3)', display: 'block', marginBottom: 3 }}>Conso/semaine *</label>
+            <input type="number" placeholder="Ex: 8" value={conso} onChange={e => setConso(e.target.value)} />
+          </div>
+          <div>
+            <label style={{ fontSize: 11, color: 'var(--text3)', display: 'block', marginBottom: 3 }}>Seuil alerte</label>
+            <input type="number" placeholder="Auto" value={seuil} onChange={e => setSeuil(e.target.value)} />
+          </div>
+          <button className="btn-gold" onClick={add} disabled={!nom || !actuel || !conso} style={{ padding: '10px 14px', whiteSpace: 'nowrap' }}>+ Ajouter</button>
+        </div>
+      </div>
+      {stocks.length === 0 ? (
+        <p style={{ fontSize: 13, color: 'var(--text3)', textAlign: 'center', padding: '1rem' }}>Aucun stock enregistré — ajoutez vos produits ci-dessus</p>
+      ) : (
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(220px, 1fr))', gap: 10 }}>
+          {stocks.map(s => {
+            const etat = getEtat(s);
+            const besoin = Math.max(0, s.conso_semaine * 1.3 - s.actuel);
+            return (
+              <div key={s.id} className="card" style={{ padding: '12px 14px', borderColor: s.actuel <= s.seuil_alerte ? 'var(--red2)' : 'var(--border)' }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 6 }}>
+                  <p style={{ fontSize: 14, fontWeight: 500 }}>{s.nom}</p>
+                  <button onClick={() => remove(s.id)} style={{ background: 'none', border: 'none', color: 'var(--text3)', cursor: 'pointer', fontSize: 14 }}>✕</button>
+                </div>
+                <p style={{ fontSize: 20, fontWeight: 700, color: etat.color, marginBottom: 2 }}>{s.actuel} {s.unite}</p>
+                <p style={{ fontSize: 11, color: 'var(--text3)', marginBottom: 4 }}>Conso: {s.conso_semaine}{s.unite}/sem · Seuil: {s.seuil_alerte}{s.unite}</p>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                  <span style={{ fontSize: 11, fontWeight: 500, color: etat.color }}>{etat.label}</span>
+                  {besoin > 0 && <span style={{ fontSize: 11, color: 'var(--gold)' }}>→ Commander {besoin.toFixed(1)}{s.unite}</span>}
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ─── CHAT COMMANDES ──────────────────────────────
+function ChatCommandes({ data, usage }) {
+  const [messages, setMessages] = useState(data.chat || []);
+  const [input, setInput] = useState('');
+  const [loading, setLoading] = useState(false);
+  const bottomRef = useState(null);
+
+  const SUGGESTIONS = [
+    "Combien dois-je commander et à qui ?",
+    "Quels stocks sont en alerte cette semaine ?",
+    "Quel plat mettre en avant ce soir selon mes stocks ?",
+    "Génère un bon de commande pour cette semaine",
+    "Quel fournisseur contacter en priorité ?",
+  ];
+
+  const buildContext = () => {
+    const f = data.fournisseurs || [];
+    const s = data.stocks || [];
+    if (f.length === 0 && s.length === 0) return null;
+
+    const fTexte = f.length > 0
+      ? f.map(x => `- ${x.nom} : ${x.produits}${x.tel ? ` (tél: ${x.tel})` : ''}`).join('\n')
+      : 'Aucun fournisseur enregistré';
+
+    const sTexte = s.length > 0
+      ? s.map(x => {
+          const ratio = x.actuel / x.conso_semaine;
+          const etat = ratio <= 0.5 ? 'URGENT' : ratio <= 1 ? 'ALERTE' : 'OK';
+          const besoin = Math.max(0, x.conso_semaine * 1.3 - x.actuel);
+          return `- ${x.nom} : ${x.actuel}${x.unite} en stock | conso ${x.conso_semaine}${x.unite}/sem | état: ${etat}${besoin > 0 ? ` | à commander: ${besoin.toFixed(1)}${x.unite}` : ''}`;
+        }).join('\n')
+      : 'Aucun stock enregistré';
+
+    return `Tu es ZORAN CMO ENGINE v3.0 — assistant pilotage opérationnel de ${usage.resto}.
+Tu aides le restaurateur à gérer ses commandes fournisseurs et ses stocks.
+Réponds en français, de façon claire et actionnable.
+Utilise des emojis pour les niveaux d'urgence (🔴 urgent, 🟡 alerte, 🟢 ok).
+
+FOURNISSEURS ENREGISTRÉS :
+${fTexte}
+
+STOCKS ACTUELS :
+${sTexte}
+
+RÈGLE : Si tu recommandes une commande, indique TOUJOURS :
+1. Le fournisseur exact à contacter
+2. La quantité précise à commander
+3. La raison (stock actuel vs besoin semaine)
+4. Si applicable : la formule TA&I à utiliser pour promouvoir ce plat`;
+  };
+
+  const send = async (msg) => {
+    const texte = (msg || input).trim();
+    if (!texte) return;
+
+    const ctx = buildContext();
+    if (!ctx) {
+      setMessages(m => [...m, { role: 'user', content: texte }, { role: 'assistant', content: '⚠️ Ajoutez d\'abord vos fournisseurs et stocks dans les onglets ci-dessus pour que je puisse vous aider.' }]);
+      return;
+    }
+
+    const newMessages = [...messages, { role: 'user', content: texte }];
+    setMessages(newMessages);
+    setInput('');
+    setLoading(true);
+
+    try {
+      const r = await fetch('/api/generate', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          _pilotage: true,
+          _system: ctx,
+          _messages: newMessages.map(m => ({ role: m.role, content: m.content })),
+          resto: usage.resto,
+          nom_plat: 'pilotage',
+          type_plat: 'autre',
+          description_actuelle: texte,
+          infos: 'mode pilotage commandes'
+        })
+      });
+
+      let reponse = '';
+      if (r.ok) {
+        const d = await r.json();
+        reponse = d._pilotage_response || d.conseil_pro || JSON.stringify(d);
+      } else {
+        reponse = '❌ Erreur de connexion. Vérifiez que l\'app est déployée sur Vercel.';
+      }
+
+      const withReply = [...newMessages, { role: 'assistant', content: reponse }];
+      setMessages(withReply);
+      StorePilotage.save({ ...data, chat: withReply.slice(-20) });
+    } catch {
+      setMessages(m => [...m, { role: 'assistant', content: '❌ Erreur de connexion au moteur TA&I.' }]);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  return (
+    <div>
+      <h3 style={{ fontSize: 15, marginBottom: 14, color: 'var(--gold2)' }}>💬 Assistant Pilotage TA&I</h3>
+
+      {messages.length === 0 && (
+        <div className="card" style={{ marginBottom: 14 }}>
+          <p style={{ fontSize: 13, color: 'var(--text2)', marginBottom: 12 }}>Questions fréquentes — cliquez pour envoyer :</p>
+          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
+            {SUGGESTIONS.map(s => (
+              <button key={s} onClick={() => send(s)} className="btn-outline" style={{ fontSize: 12, padding: '6px 12px', textAlign: 'left' }}>{s}</button>
+            ))}
+          </div>
+        </div>
+      )}
+
+      <div style={{ background: 'var(--bg2)', border: '1px solid var(--border)', borderRadius: 'var(--r2)', padding: '1rem', minHeight: 200, maxHeight: 400, overflowY: 'auto', marginBottom: 12, display: 'flex', flexDirection: 'column', gap: 12 }}>
+        {messages.length === 0 && (
+          <p style={{ fontSize: 13, color: 'var(--text3)', textAlign: 'center', margin: 'auto' }}>
+            Posez votre question sur vos stocks ou commandes
+          </p>
+        )}
+        {messages.map((m, i) => (
+          <div key={i} style={{ display: 'flex', justifyContent: m.role === 'user' ? 'flex-end' : 'flex-start' }}>
+            <div style={{
+              maxWidth: '80%',
+              padding: '10px 14px',
+              borderRadius: m.role === 'user' ? '14px 14px 4px 14px' : '14px 14px 14px 4px',
+              background: m.role === 'user' ? 'var(--gold3)' : 'var(--bg3)',
+              color: m.role === 'user' ? '#0A0A08' : 'var(--text)',
+              fontSize: 13,
+              lineHeight: 1.7,
+              whiteSpace: 'pre-wrap'
+            }}>
+              {m.content}
+            </div>
+          </div>
+        ))}
+        {loading && (
+          <div style={{ display: 'flex', justifyContent: 'flex-start' }}>
+            <div style={{ background: 'var(--bg3)', padding: '10px 14px', borderRadius: '14px 14px 14px 4px', fontSize: 13, color: 'var(--text3)' }}>
+              <span className="spinner" style={{ width: 14, height: 14, marginRight: 6 }} />Zoran analyse...
+            </div>
+          </div>
+        )}
+      </div>
+
+      <div style={{ display: 'flex', gap: 10 }}>
+        <input
+          placeholder="Ex: Combien dois-je commander et à qui ?"
+          value={input}
+          onChange={e => setInput(e.target.value)}
+          onKeyDown={e => e.key === 'Enter' && !loading && send()}
+          style={{ flex: 1 }}
+        />
+        <button className="btn-gold" onClick={() => send()} disabled={loading || !input.trim()} style={{ padding: '10px 20px', whiteSpace: 'nowrap' }}>
+          Envoyer →
+        </button>
+      </div>
+
+      {messages.length > 0 && (
+        <button onClick={() => { setMessages([]); StorePilotage.save({ ...data, chat: [] }); }} className="btn-outline" style={{ fontSize: 11, padding: '4px 10px', marginTop: 8 }}>
+          Effacer la conversation
+        </button>
+      )}
+    </div>
+  );
+}
+
+// ─── MODULE SMART PILOTAGE COMPLET ───────────────
+function SmartPilotage({ usage, onBack }) {
+  const [tab, setTab] = useState('fournisseurs');
+  const [data, setData] = useState(() => StorePilotage.get());
+
+  const save = newData => {
+    setData(newData);
+    StorePilotage.save(newData);
+  };
+
+  const tabs = [
+    { id: 'fournisseurs', label: '📦 Fournisseurs', count: data.fournisseurs?.length || 0 },
+    { id: 'stocks', label: '📊 Stocks', count: data.stocks?.length || 0 },
+    { id: 'chat', label: '💬 Commandes IA', count: null },
+  ];
+
+  const alerts = (data.stocks || []).filter(s => s.actuel <= s.seuil_alerte).length;
+
+  return (
+    <div style={{ maxWidth: 860, margin: '0 auto' }} className="fade-in">
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20, flexWrap: 'wrap', gap: 10 }}>
+        <div>
+          <h2 style={{ fontSize: 22, marginBottom: 4 }}>Smart Pilotage</h2>
+          <p style={{ fontSize: 13, color: 'var(--text3)' }}>{usage.resto} · Gestion fournisseurs, stocks et commandes assistée par IA</p>
+        </div>
+        <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+          {alerts > 0 && (
+            <span className="pill" style={{ background: 'var(--red2)', color: 'var(--red)', fontSize: 12 }}>
+              🔴 {alerts} stock{alerts > 1 ? 's' : ''} en alerte
+            </span>
+          )}
+          <button className="btn-outline" onClick={onBack} style={{ fontSize: 13 }}>← Retour</button>
+        </div>
+      </div>
+
+      <div style={{ display: 'flex', gap: 8, marginBottom: 20, borderBottom: '1px solid var(--border)', paddingBottom: 12 }}>
+        {tabs.map(t => (
+          <button
+            key={t.id}
+            onClick={() => setTab(t.id)}
+            style={{
+              background: tab === t.id ? 'var(--gold3)' : 'var(--bg3)',
+              color: tab === t.id ? '#0A0A08' : 'var(--text2)',
+              border: 'none',
+              borderRadius: 'var(--r)',
+              padding: '8px 16px',
+              fontSize: 13,
+              fontWeight: tab === t.id ? 600 : 400,
+              cursor: 'pointer',
+              display: 'flex',
+              alignItems: 'center',
+              gap: 6,
+            }}
+          >
+            {t.label}
+            {t.count !== null && t.count > 0 && (
+              <span style={{ background: tab === t.id ? 'rgba(0,0,0,0.2)' : 'var(--border2)', borderRadius: 10, padding: '1px 7px', fontSize: 11 }}>{t.count}</span>
+            )}
+          </button>
+        ))}
+      </div>
+
+      {tab === 'fournisseurs' && <FournisseursForm data={data} onSave={save} />}
+      {tab === 'stocks' && <StocksForm data={data} onSave={save} />}
+      {tab === 'chat' && <ChatCommandes data={data} usage={usage} />}
     </div>
   );
 }
@@ -598,6 +1014,11 @@ function App() {
         </div>
         <div style={{display:'flex',gap:8,alignItems:'center'}}>
           {usage.resto&&screen!=='admin'&&screen!=='admin-login'&&<span style={{fontSize:12,color:'var(--text3)'}}>{usage.resto}</span>}
+          {usage.email&&screen!=='admin'&&screen!=='admin-login'&&(
+            <button onClick={()=>setScreen('pilotage')} className="btn-outline" style={{fontSize:12,padding:'6px 12px',borderColor:screen==='pilotage'?'var(--gold)':'var(--border2)',color:screen==='pilotage'?'var(--gold)':'var(--text2)'}}>
+              📦 Pilotage
+            </button>
+          )}
           <a href="https://tai-food.com" target="_blank" rel="noreferrer" style={{textDecoration:'none'}}><button className="btn-outline" style={{fontSize:12,padding:'6px 12px'}}>tai-food.com →</button></a>
         </div>
       </header>
@@ -621,6 +1042,7 @@ function App() {
         {screen==='paywall'&&<Paywall usage={usage} onPaySuccess={plan=>{save({...usage,paid:true,plan});setScreen('form');}}/>}
         {screen==='admin-login'&&<AdminLogin onLogin={()=>setScreen('admin')}/>}
         {screen==='admin'&&<AdminDash onExit={()=>{window.location.hash='';setScreen(usage.email?'form':'home');}}/>}
+        {screen==='pilotage'&&<SmartPilotage usage={usage} onBack={()=>setScreen(needsPay?'paywall':'form')}/>}
       </main>
       <footer style={{borderTop:'1px solid var(--border)',padding:'16px 24px',marginTop:'3rem',display:'flex',justifyContent:'space-between',alignItems:'center',flexWrap:'wrap',gap:8}}>
         <p style={{fontSize:12,color:'var(--text3)'}}>© 2025 TA&I — Henri F. · Copywriting Stratégique Restauration</p>
