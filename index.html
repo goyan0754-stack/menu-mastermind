@@ -1,0 +1,639 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<title>TA&I Analyzer — Copywriting Menu par Henri F.</title>
+<script src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+<script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+<script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+<link href="https://fonts.googleapis.com/css2?family=DM+Serif+Display:ital@0;1&family=DM+Sans:wght@300;400;500;600&display=swap" rel="stylesheet"/>
+<style>
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+:root{
+  --bg:#0A0A08;--bg2:#111110;--bg3:#1A1A17;--bg4:#222220;
+  --border:#2A2A27;--border2:#3A3A37;
+  --text:#F5F4F0;--text2:#A8A79F;--text3:#6A6A62;
+  --gold:#C8A86B;--gold2:#E8C98B;--gold3:#A8882B;
+  --green:#4CAF7A;--green2:#2A6B47;
+  --red:#E85555;--red2:#6B2A2A;
+  --blue:#5B9BD5;--blue2:#2A4B6B;
+  --r:8px;--r2:14px;
+}
+body{background:var(--bg);color:var(--text);font-family:'DM Sans',sans-serif;font-size:15px;line-height:1.6;min-height:100vh}
+h1,h2,h3{font-family:'DM Serif Display',serif;font-weight:400;line-height:1.2}
+input,textarea,select{background:var(--bg3);border:1px solid var(--border2);color:var(--text);border-radius:var(--r);padding:10px 14px;font-family:'DM Sans',sans-serif;font-size:14px;width:100%;outline:none;transition:border 0.2s}
+input:focus,textarea:focus,select:focus{border-color:var(--gold)}
+textarea{resize:vertical;min-height:80px}
+button{font-family:'DM Sans',sans-serif;cursor:pointer;border:none;border-radius:var(--r);padding:10px 20px;font-size:14px;font-weight:500;transition:all 0.2s}
+button:disabled{opacity:0.5;cursor:not-allowed}
+.btn-gold{background:linear-gradient(135deg,var(--gold3),var(--gold));color:#0A0A08;font-weight:600}
+.btn-gold:hover:not(:disabled){filter:brightness(1.12);transform:translateY(-1px)}
+.btn-outline{background:transparent;border:1px solid var(--border2);color:var(--text2)}
+.btn-outline:hover:not(:disabled){border-color:var(--gold);color:var(--gold)}
+.card{background:var(--bg2);border:1px solid var(--border);border-radius:var(--r2);padding:1.5rem}
+.pill{display:inline-block;padding:3px 10px;border-radius:20px;font-size:12px;font-weight:500}
+@keyframes spin{to{transform:rotate(360deg)}}
+.spinner{width:20px;height:20px;border:2px solid var(--border2);border-top-color:var(--gold);border-radius:50%;animation:spin 0.7s linear infinite;display:inline-block;vertical-align:middle}
+@keyframes fadeIn{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:none}}
+.fade-in{animation:fadeIn 0.4s ease}
+::-webkit-scrollbar{width:6px}::-webkit-scrollbar-track{background:var(--bg)}::-webkit-scrollbar-thumb{background:var(--border2);border-radius:3px}
+</style>
+</head>
+<body>
+<div id="root"></div>
+<script type="text/babel">
+const { useState, useEffect, useCallback } = React;
+
+// ╔══════════════════════════════════════════════════════╗
+// ║  CONFIG FRONTEND — valeurs non sensibles uniquement  ║
+// ║  Clés API gérées côté serveur dans /api/             ║
+// ╚══════════════════════════════════════════════════════╝
+const CONFIG = {
+  SHEET_ID:        "137tAykDIpaSsTkjjFzPuw4rOCKw5UXnCh540WGduU08",
+  STRIPE_URL_9EUR:  "https://buy.stripe.com/9B6fZhbSZdxxbPNdZ8d7q02",
+  STRIPE_URL_29EUR: "https://buy.stripe.com/7sYdR9cX38dd075bR0d7q03",
+  FREE_QUOTA: 3, PRICE_UNIT: 9, PRICE_ABO: 29,
+};
+
+// Prompt Zoran retiré du frontend — il réside uniquement dans api/generate.js (côté serveur)
+
+// Utilitaires
+const Store = {
+  get: k => { try { return JSON.parse(localStorage.getItem(k)); } catch { return null; } },
+  set: (k,v) => localStorage.setItem(k, JSON.stringify(v)),
+  usage: () => Store.get('tai_v2') || { count:0,email:null,paid:false,plan:null,nom:'',resto:'',tel:'',credits_bonus:0 },
+  save: v => Store.set('tai_v2', v),
+  // Vérifie si l'utilisateur peut encore générer
+  canGen: (u) => {
+    if (!u.email) return false;
+    if (u.plan === 'illimite' || u.plan === 'offert' || u.plan === 'abo') return true;
+    const totalDispo = CONFIG.FREE_QUOTA + (u.credits_bonus || 0);
+    return u.count < totalDispo;
+  },
+  remaining: (u) => {
+    if (u.plan === 'illimite' || u.plan === 'offert' || u.plan === 'abo') return Infinity;
+    return Math.max(0, CONFIG.FREE_QUOTA + (u.credits_bonus || 0) - u.count);
+  }
+};
+
+async function log(data) {
+  try {
+    await fetch('/api/log', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(data)
+    });
+  } catch(e) { console.warn('Log:', e.message); }
+}
+
+async function loadAdminData() {
+  if (!CONFIG.SHEETS_WEBHOOK || CONFIG.SHEETS_WEBHOOK==='VOTRE_URL_APPS_SCRIPT') {
+    return [
+      {Email:'marie@bistrot.fr',Nom:'Marie',Restaurant:'Le Bistrot du Port',Telephone:'0612345678','Nb requetes':5,'Total depense':27,Plan:'abo','Score moyen':16.2,'Derniere activite':'19/04 14:23'},
+      {Email:'jean@provence.fr',Nom:'Jean',Restaurant:'La Provence',Telephone:'0698765432','Nb requetes':3,'Total depense':0,Plan:'free','Score moyen':14.8,'Derniere activite':'18/04 10:11'},
+      {Email:'sophie@jardin.fr',Nom:'Sophie',Restaurant:'Le Jardin Secret',Telephone:'0645678901','Nb requetes':12,'Total depense':58,Plan:'abo','Score moyen':17.4,'Derniere activite':'19/04 09:05'},
+    ];
+  }
+  const r = await fetch(CONFIG.SHEETS_WEBHOOK+'?action=getUsers&t='+Date.now());
+  const j = await r.json();
+  return j.users || [];
+}
+
+async function callZoran(d) {
+  const r = await fetch('/api/generate', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      resto: d.resto,
+      nom_plat: d.nom_plat,
+      type_plat: d.type_plat,
+      description_actuelle: d.description_actuelle,
+      infos: d.infos || ''
+    })
+  });
+  if (!r.ok) { const e=await r.json().catch(()=>({})); throw new Error(e.error||`Erreur ${r.status}`); }
+  return await r.json();
+}
+
+// Composants
+function ScoreBadge({score}) {
+  const s=Number(score)||0, c=s>=15?'#4CAF7A':s>=8?'#C8A86B':'#E85555';
+  return <div style={{display:'inline-flex',alignItems:'center',gap:6,background:`${c}18`,border:`1px solid ${c}50`,borderRadius:20,padding:'4px 12px'}}><span style={{fontWeight:700,color:c,fontSize:16}}>S={s.toFixed(1)}</span><span style={{fontSize:11,color:c}}>{s>=15?'Exceptionnel':s>=8?'Bon':'Faible'}</span></div>;
+}
+
+function Bar({label,value}) {
+  const v=Number(value)||0;
+  return <div style={{marginBottom:5}}><div style={{display:'flex',justifyContent:'space-between',marginBottom:2}}><span style={{fontSize:12,color:'var(--text3)'}}>{label}</span><span style={{fontSize:12,color:'var(--text2)'}}>{v.toFixed(2)}</span></div><div style={{height:3,background:'var(--bg4)',borderRadius:2}}><div style={{height:3,background:'var(--gold)',borderRadius:2,width:`${Math.min(v*100,100)}%`,transition:'width 1s'}}/></div></div>;
+}
+
+function EmailGate({onSubmit}) {
+  const [nom,setNom]=useState('');
+  const [resto,setResto]=useState('');
+  const [email,setEmail]=useState('');
+  const [tel,setTel]=useState('');
+  const [err,setErr]=useState({});
+  const [loading,setLoading]=useState(false);
+  const go=async()=>{
+    const e={};
+    if(!nom.trim())e.nom='Requis';
+    if(!resto.trim())e.resto='Requis';
+    if(!/\S+@\S+\.\S+/.test(email))e.email='Email invalide';
+    if(Object.keys(e).length){setErr(e);return;}
+    setLoading(true);
+    await log({action:'signup',nom,resto,email,tel});
+    onSubmit({nom,resto,email,tel});
+  };
+  return (
+    <div style={{maxWidth:440,margin:'0 auto'}}>
+      <div className="card">
+        <h2 style={{fontSize:22,marginBottom:4}}>Commencer gratuitement</h2>
+        <p style={{color:'var(--text2)',fontSize:14,marginBottom:20}}>3 descriptions offertes · Aucune carte requise</p>
+        <div style={{display:'flex',flexDirection:'column',gap:12}}>
+          <div>
+            <label style={{fontSize:12,color:'var(--text3)',display:'block',marginBottom:4}}>Votre prénom <span style={{color:'var(--gold)'}}>*</span></label>
+            <input placeholder="Marie" value={nom} onChange={e=>setNom(e.target.value)} style={err.nom?{borderColor:'var(--red)'}:undefined}/>
+            {err.nom&&<p style={{color:'var(--red)',fontSize:12,marginTop:3}}>{err.nom}</p>}
+          </div>
+          <div>
+            <label style={{fontSize:12,color:'var(--text3)',display:'block',marginBottom:4}}>Nom du restaurant <span style={{color:'var(--gold)'}}>*</span></label>
+            <input placeholder="Le Bistrot du Port" value={resto} onChange={e=>setResto(e.target.value)} style={err.resto?{borderColor:'var(--red)'}:undefined}/>
+            {err.resto&&<p style={{color:'var(--red)',fontSize:12,marginTop:3}}>{err.resto}</p>}
+          </div>
+          <div>
+            <label style={{fontSize:12,color:'var(--text3)',display:'block',marginBottom:4}}>Email <span style={{color:'var(--gold)'}}>*</span></label>
+            <input type="email" placeholder="contact@monresto.fr" value={email} onChange={e=>setEmail(e.target.value)} style={err.email?{borderColor:'var(--red)'}:undefined}/>
+            {err.email&&<p style={{color:'var(--red)',fontSize:12,marginTop:3}}>{err.email}</p>}
+          </div>
+          <div>
+            <label style={{fontSize:12,color:'var(--text3)',display:'block',marginBottom:4}}>Téléphone</label>
+            <input type="tel" placeholder="06 00 00 00 00" value={tel} onChange={e=>setTel(e.target.value)}/>
+          </div>
+          <button className="btn-gold" onClick={go} disabled={loading} style={{marginTop:8,padding:'13px 20px',fontSize:15}}>
+            {loading?<span><span className="spinner" style={{marginRight:8}}/>Enregistrement...</span>:'→ Commencer gratuitement'}
+          </button>
+        </div>
+        <p style={{fontSize:11,color:'var(--text3)',marginTop:12,textAlign:'center'}}>Données protégées · Jamais revendues</p>
+      </div>
+    </div>
+  );
+}
+
+function Paywall({usage,onPaySuccess}) {
+  const ok = CONFIG.STRIPE_URL_9EUR!=='VOTRE_LIEN_STRIPE_9EUR';
+  const pay=type=>{
+    if(!ok){if(window.confirm(`Mode démo — simuler paiement ${type==='unit'?'9':'29'}€ ?`))onPaySuccess(type==='abo'?'abo':'unit');return;}
+    const email=encodeURIComponent(usage.email||'');
+    log({action:'payment_intent',email:usage.email,resto:usage.resto,type,amount:type==='unit'?9:29});
+    window.open(`${type==='unit'?CONFIG.STRIPE_URL_9EUR:CONFIG.STRIPE_URL_29EUR}?prefilled_email=${email}`,'_blank');
+  };
+  return (
+    <div style={{maxWidth:520,margin:'0 auto'}}>
+      {!ok&&<div style={{background:'var(--red2)',border:'1px solid var(--red)',borderRadius:'var(--r)',padding:'10px 14px',marginBottom:16,fontSize:13,color:'var(--red)'}}>⚠️ Mode démo — Stripe non configuré</div>}
+      <div className="card" style={{textAlign:'center',marginBottom:20}}>
+        <div style={{fontSize:32,marginBottom:10}}>🔒</div>
+        <h2 style={{fontSize:22,marginBottom:8}}>Quota gratuit utilisé</h2>
+        <p style={{color:'var(--text2)',fontSize:14}}>Choisissez une option pour continuer</p>
+      </div>
+      <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:14}}>
+        <div className="card" style={{textAlign:'center'}}>
+          <p style={{fontSize:12,color:'var(--text3)',marginBottom:8}}>À la carte</p>
+          <p style={{fontSize:28,fontWeight:700,marginBottom:2}}>{CONFIG.PRICE_UNIT}€</p>
+          <p style={{fontSize:13,color:'var(--text2)',marginBottom:16}}>par description</p>
+          <button className="btn-outline" onClick={()=>pay('unit')} style={{width:'100%'}}>Payer {CONFIG.PRICE_UNIT}€</button>
+        </div>
+        <div className="card" style={{textAlign:'center',borderColor:'var(--gold3)'}}>
+          <span className="pill" style={{background:'var(--gold3)',color:'#0A0A08',fontSize:11,marginBottom:8,display:'inline-block'}}>⭐ Meilleure offre</span>
+          <p style={{fontSize:28,fontWeight:700,color:'var(--gold2)',marginBottom:2}}>{CONFIG.PRICE_ABO}€</p>
+          <p style={{fontSize:13,color:'var(--text2)',marginBottom:16}}>/mois · 30 descriptions</p>
+          <button className="btn-gold" onClick={()=>pay('abo')} style={{width:'100%'}}>S'abonner</button>
+        </div>
+      </div>
+      <p style={{textAlign:'center',fontSize:12,color:'var(--text3)',marginTop:14}}>💳 Stripe sécurisé · Résiliation à tout moment</p>
+    </div>
+  );
+}
+
+function GenForm({usage,onResult,onLogout}) {
+  const [nomPlat,setNomPlat]=useState('');
+  const [typePlat,setTypePlat]=useState('viande');
+  const [descActuelle,setDescActuelle]=useState('');
+  const [infos,setInfos]=useState('');
+  const [loading,setLoading]=useState(false);
+  const [err,setErr]=useState('');
+  const rem = Store.remaining(usage);
+  const canGen = Store.canGen(usage);
+  const isIllimite = usage.plan === 'illimite' || usage.plan === 'offert';
+  const go=async()=>{
+    if(!nomPlat.trim()||!descActuelle.trim()){setErr('Nom du plat et description requis.');return;}
+    setErr('');setLoading(true);
+    try {
+      const res=await callZoran({nom_plat:nomPlat,type_plat:typePlat,description_actuelle:descActuelle,infos,resto:usage.resto});
+      await log({action:'generation',email:usage.email,nom:usage.nom,resto:usage.resto,tel:usage.tel||'',plat:nomPlat,score_a:res.variante_a?.score_s||0,score_b:res.variante_b?.score_s||0,formule:res.formule_utilisee,plan:usage.paid?usage.plan:'free',req_count:usage.count+1});
+      onResult(res,{nom_plat:nomPlat,type_plat:typePlat,description_actuelle:descActuelle,infos});
+    } catch(e){setErr(`Erreur TA&I : ${e.message}`);}
+    finally{setLoading(false);}
+  };
+  return (
+    <div style={{maxWidth:560,margin:'0 auto'}}>
+      <div style={{display:'flex',justifyContent:'space-between',alignItems:'flex-start',marginBottom:20,flexWrap:'wrap',gap:10}}>
+        <div><h2 style={{fontSize:20,marginBottom:2}}>Bonjour {usage.nom} 👋</h2><p style={{fontSize:13,color:'var(--text3)'}}>{usage.resto}</p></div>
+        <div style={{textAlign:'right'}}>
+          {isIllimite ? (
+            <span className="pill" style={{background:'#3A2A6B',color:'#B09FEE',display:'inline-block',marginBottom:4}}>
+              {usage.plan==='offert'?'🎁 Offert':'♾️ Illimité'}
+            </span>
+          ) : !usage.paid ? (
+            <p style={{fontSize:13,color:rem>0?'var(--gold)':'var(--red)',marginBottom:4}}>
+              {rem>0 ? `${rem} description${rem>1?'s':''} restante${rem>1?'s':''}` : 'Quota épuisé'}
+            </p>
+          ) : (
+            <span className="pill" style={{background:'var(--green2)',color:'var(--green)',display:'inline-block',marginBottom:4}}>✓ Abonné</span>
+          )}
+          <br/><button className="btn-outline" onClick={onLogout} style={{fontSize:11,padding:'4px 10px',marginTop:4}}>Changer de compte</button>
+        </div>
+      </div>
+      <div className="card">
+        <h3 style={{fontSize:16,marginBottom:16}}>Analyser un plat</h3>
+        <div style={{display:'flex',flexDirection:'column',gap:14}}>
+          <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:12}}>
+            <div>
+              <label style={{fontSize:12,color:'var(--text3)',display:'block',marginBottom:4}}>Nom du plat <span style={{color:'var(--gold)'}}>*</span></label>
+              <input placeholder="Poulet rôti" value={nomPlat} onChange={e=>setNomPlat(e.target.value)}/>
+            </div>
+            <div>
+              <label style={{fontSize:12,color:'var(--text3)',display:'block',marginBottom:4}}>Type de plat</label>
+              <select value={typePlat} onChange={e=>setTypePlat(e.target.value)}>
+                <option value="viande">Viande</option>
+                <option value="poisson">Poisson</option>
+                <option value="vegetarien">Végétarien</option>
+                <option value="entree">Entrée</option>
+                <option value="dessert">Dessert</option>
+                <option value="plat_du_jour">Plat du jour</option>
+                <option value="boisson">Boisson</option>
+                <option value="autre">Autre</option>
+              </select>
+            </div>
+          </div>
+          <div>
+            <label style={{fontSize:12,color:'var(--text3)',display:'block',marginBottom:4}}>Description actuelle <span style={{color:'var(--gold)'}}>*</span></label>
+            <textarea placeholder="Ex : Poulet rôti aux herbes, pommes de terre" value={descActuelle} onChange={e=>setDescActuelle(e.target.value)}/>
+          </div>
+          <div>
+            <label style={{fontSize:12,color:'var(--text3)',display:'block',marginBottom:4}}>Infos complémentaires <span style={{color:'var(--text3)'}}>(producteur, technique, histoire...)</span></label>
+            <textarea placeholder="Ex : Éleveur local, cuisson 3h, recette familiale 1972..." value={infos} onChange={e=>setInfos(e.target.value)} style={{minHeight:60}}/>
+          </div>
+          {err&&<div style={{color:'var(--red)',fontSize:13,background:'var(--red2)',padding:'10px 14px',borderRadius:'var(--r)'}}>{err}</div>}
+          {!canGen ?
+            <div style={{textAlign:'center',padding:'1rem',background:'var(--bg3)',borderRadius:'var(--r)',fontSize:14,color:'var(--text2)'}}>Quota épuisé · <button onClick={()=>window.location.hash='paywall'} style={{background:'none',border:'none',color:'var(--gold)',cursor:'pointer',fontSize:14,textDecoration:'underline'}}>Voir les offres</button></div>
+            :<button className="btn-gold" onClick={go} disabled={loading||!nomPlat||!descActuelle} style={{padding:'13px 20px',fontSize:15}}>
+              {loading?<span><span className="spinner" style={{marginRight:8}}/>TA&I analyse...</span>:'⚡ Générer avec TA&I'}
+            </button>}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function ResCard({variant,label}) {
+  const [cp,setCp]=useState(false);
+  return (
+    <div className="card fade-in" style={{borderColor:label==='A'?'var(--gold3)':'var(--border)',position:'relative',paddingTop:label==='A'?'2rem':'1.5rem'}}>
+      {label==='A'&&<div style={{position:'absolute',top:-10,left:16}}><span className="pill" style={{background:'var(--gold3)',color:'#0A0A08',fontSize:11}}>⭐ Meilleure variante</span></div>}
+      <div style={{display:'flex',justifyContent:'space-between',alignItems:'flex-start',marginBottom:10}}>
+        <div style={{flex:1,paddingRight:8}}><span style={{fontSize:11,color:'var(--text3)',textTransform:'uppercase',letterSpacing:'0.1em'}}>Variante {label}</span><h3 style={{fontSize:15,color:'var(--gold2)',marginTop:2}}>{variant.titre}</h3></div>
+        <ScoreBadge score={variant.score_s}/>
+      </div>
+      <p style={{color:'var(--text2)',fontSize:13,lineHeight:1.8,marginBottom:16}}>{variant.description}</p>
+      <button className="btn-outline" onClick={()=>{navigator.clipboard.writeText(`${variant.titre}\n\n${variant.description}`);setCp(true);setTimeout(()=>setCp(false),2000);}} style={{width:'100%',fontSize:13}}>
+        {cp?'✓ Copié !':'📋 Copier'}
+      </button>
+    </div>
+  );
+}
+
+function ResultView({result,formData,usage,onNew,onPaywall}) {
+  const done=!usage.paid&&usage.count>=CONFIG.FREE_QUOTA;
+  return (
+    <div style={{maxWidth:700,margin:'0 auto'}} className="fade-in">
+      <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:14,flexWrap:'wrap',gap:8}}>
+        <h2 style={{fontSize:20}}>Résultats — {formData.nom_plat}</h2>
+        <button className="btn-outline" onClick={onNew} style={{fontSize:13}}>← Nouveau plat</button>
+      </div>
+      <div style={{display:'flex',gap:8,flexWrap:'wrap',marginBottom:18}}>
+        <span className="pill" style={{background:'var(--bg3)',border:'1px solid var(--border)',color:'var(--text2)',fontSize:12}}>📐 {result.formule_utilisee}</span>
+        <span className="pill" style={{background:'var(--bg3)',border:'1px solid var(--border)',color:'var(--text3)',fontSize:12}}>{result.formule_raison}</span>
+      </div>
+      <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:16,marginBottom:18}}>
+        <ResCard variant={result.variante_a} label="A"/><ResCard variant={result.variante_b} label="B"/>
+      </div>
+
+      {result.conseil_pro&&(
+        <div className="card" style={{borderLeft:'3px solid var(--gold3)',borderRadius:'0 var(--r2) var(--r2) 0',marginBottom:18}}>
+          <p style={{fontSize:12,color:'var(--gold3)',marginBottom:6,textTransform:'uppercase',letterSpacing:'0.08em'}}>💡 Conseil pro TA&I</p>
+          <p style={{fontSize:14,color:'var(--text2)',lineHeight:1.7}}>{result.conseil_pro}</p>
+        </div>
+      )}
+      {done?(
+        <div className="card" style={{textAlign:'center',borderColor:'var(--gold3)'}}>
+          <p style={{fontSize:15,marginBottom:4}}>Quota gratuit utilisé 🎉</p>
+          <p style={{fontSize:13,color:'var(--text2)',marginBottom:14}}>Continuez à transformer vos menus</p>
+          <button className="btn-gold" onClick={onPaywall} style={{padding:'12px 28px'}}>Continuer avec TA&I →</button>
+        </div>
+      ):(
+        <button className="btn-gold" onClick={onNew} style={{width:'100%',padding:'13px 20px',fontSize:15}}>⚡ Analyser un autre plat</button>
+      )}
+    </div>
+  );
+}
+
+function UserModal({user, onClose, onSave}) {
+  const g=(k)=>user[k]??'';
+  const planActuel=g('Plan');
+  const creditsActuels=Number(g('Credits manuels'))||0;
+
+  const [plan,setPlan]=useState(planActuel||'free');
+  const [credits,setCredits]=useState(creditsActuels);
+  const [saving,setSaving]=useState(false);
+  const [saved,setSaved]=useState(false);
+
+  const planLabel={free:'Gratuit (3 descriptions)',abo:'Abonné 29€/mois',unit:'Crédits payants',illimite:'♾️ Accès illimité',offert:'🎁 Offert par Henri'};
+
+  const save=async()=>{
+    setSaving(true);
+    await log({
+      action:'admin_update',
+      email:g('Email'),
+      plan,
+      credits_manuels:credits,
+      updated_by:'admin',
+    });
+    setSaved(true);
+    setTimeout(()=>{setSaved(false);onSave({...user,Plan:plan,'Credits manuels':credits});},1000);
+    setSaving(false);
+  };
+
+  return (
+    <div style={{position:'fixed',inset:0,background:'rgba(0,0,0,0.75)',zIndex:1000,display:'flex',alignItems:'center',justifyContent:'center',padding:'1rem'}} onClick={onClose}>
+      <div className="card fade-in" style={{maxWidth:480,width:'100%',padding:'1.5rem'}} onClick={e=>e.stopPropagation()}>
+        <div style={{display:'flex',justifyContent:'space-between',alignItems:'flex-start',marginBottom:20}}>
+          <div>
+            <h3 style={{fontSize:18,marginBottom:2}}>{g('Nom')} — {g('Restaurant')}</h3>
+            <p style={{fontSize:12,color:'var(--text3)'}}>{g('Email')} · {g('Telephone')||g('Téléphone')}</p>
+          </div>
+          <button onClick={onClose} style={{background:'none',border:'none',color:'var(--text3)',fontSize:20,cursor:'pointer',padding:'0 4px'}}>✕</button>
+        </div>
+
+        <div style={{display:'grid',gridTemplateColumns:'1fr 1fr 1fr',gap:10,marginBottom:20}}>
+          {[
+            {l:'Requêtes',v:Number(g('Nb requetes'))||Number(g('Nb requêtes'))||0,c:'var(--gold)'},
+            {l:'Dépenses',v:`${Number(g('Total depense'))||Number(g('Total dépensé (€)'))||0}€`,c:'var(--green)'},
+            {l:'Score moy.',v:Number(g('Score moyen'))||0,c:'var(--blue)'},
+          ].map(m=>(
+            <div key={m.l} style={{background:'var(--bg3)',borderRadius:'var(--r)',padding:'10px',textAlign:'center'}}>
+              <p style={{fontSize:11,color:'var(--text3)',marginBottom:2}}>{m.l}</p>
+              <p style={{fontSize:18,fontWeight:700,color:m.c}}>{typeof m.v==='number'&&m.l==='Score moy.'?m.v.toFixed(1):m.v}</p>
+            </div>
+          ))}
+        </div>
+
+        <div style={{marginBottom:18}}>
+          <p style={{fontSize:12,color:'var(--text3)',marginBottom:8,textTransform:'uppercase',letterSpacing:'0.06em'}}>Type d'accès</p>
+          <div style={{display:'flex',flexDirection:'column',gap:8}}>
+            {Object.entries(planLabel).map(([val,lbl])=>(
+              <label key={val} style={{display:'flex',alignItems:'center',gap:10,padding:'10px 14px',background:plan===val?'var(--bg4)':'var(--bg3)',border:`1px solid ${plan===val?'var(--gold3)':'var(--border)'}`,borderRadius:'var(--r)',cursor:'pointer',transition:'all 0.15s'}}>
+                <input type="radio" name="plan" value={val} checked={plan===val} onChange={()=>setPlan(val)} style={{width:'auto',accentColor:'var(--gold)'}}/>
+                <span style={{fontSize:14,color:plan===val?'var(--gold2)':'var(--text2)'}}>{lbl}</span>
+              </label>
+            ))}
+          </div>
+        </div>
+
+        <div style={{marginBottom:20}}>
+          <p style={{fontSize:12,color:'var(--text3)',marginBottom:8,textTransform:'uppercase',letterSpacing:'0.06em'}}>Crédits supplémentaires manuels</p>
+          <div style={{display:'flex',alignItems:'center',gap:10}}>
+            <button onClick={()=>setCredits(c=>Math.max(0,c-1))} style={{background:'var(--bg3)',border:'1px solid var(--border2)',color:'var(--text)',width:36,height:36,fontSize:18,borderRadius:'var(--r)',flexShrink:0}}>−</button>
+            <input type="number" min="0" max="9999" value={credits} onChange={e=>setCredits(Math.max(0,parseInt(e.target.value)||0))} style={{textAlign:'center',fontWeight:700,fontSize:18}}/>
+            <button onClick={()=>setCredits(c=>c+1)} style={{background:'var(--bg3)',border:'1px solid var(--border2)',color:'var(--text)',width:36,height:36,fontSize:18,borderRadius:'var(--r)',flexShrink:0}}>+</button>
+            <button onClick={()=>setCredits(c=>c+10)} className="btn-outline" style={{fontSize:12,padding:'6px 10px',flexShrink:0}}>+10</button>
+            <button onClick={()=>setCredits(0)} className="btn-outline" style={{fontSize:12,padding:'6px 10px',flexShrink:0,color:'var(--red)'}}>Reset</button>
+          </div>
+          <p style={{fontSize:11,color:'var(--text3)',marginTop:6}}>Ces crédits s'ajoutent au quota gratuit et aux éventuels achats.</p>
+        </div>
+
+        <div style={{display:'flex',gap:10}}>
+          <button className="btn-gold" onClick={save} disabled={saving} style={{flex:1,padding:'11px'}}>
+            {saved?'✓ Sauvegardé !':saving?<span className="spinner"/>:'Appliquer les modifications'}
+          </button>
+          <button className="btn-outline" onClick={onClose} style={{padding:'11px 16px'}}>Annuler</button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function AdminDash({onExit}) {
+  const [data,setData]=useState([]);
+  const [loading,setLoading]=useState(true);
+  const [err,setErr]=useState('');
+  const [filter,setFilter]=useState('');
+  const [ts,setTs]=useState(null);
+  const [selected,setSelected]=useState(null);
+
+  const load=useCallback(async()=>{
+    setLoading(true);setErr('');
+    try{const d=await loadAdminData();setData(d);setTs(new Date());}
+    catch(e){setErr(e.message);}
+    finally{setLoading(false);}
+  },[]);
+
+  useEffect(()=>{load();const t=setInterval(load,30000);return()=>clearInterval(t);},[load]);
+
+  const g=(u,k)=>u[k]??u[k.replace(' ','_')]??'';
+  const fil=data.filter(u=>{
+    if(!filter)return true;
+    const f=filter.toLowerCase();
+    return String(g(u,'Email')).includes(f)||String(g(u,'Restaurant')).toLowerCase().includes(f)||String(g(u,'Nom')).toLowerCase().includes(f);
+  });
+  const rev=data.reduce((s,u)=>s+(Number(g(u,'Total depense'))||Number(g(u,'Total dépensé (€)'))||0),0);
+  const reqs=data.reduce((s,u)=>s+(Number(g(u,'Nb requetes'))||Number(g(u,'Nb requêtes'))||0),0);
+  const paid=data.filter(u=>g(u,'Plan')!=='free'&&g(u,'Plan')!=='').length;
+  const sheetOk=CONFIG.SHEET_ID!=='VOTRE_SHEET_ID';
+
+  const planBadge=(plan)=>{
+    const styles={
+      abo:{bg:'var(--green2)',c:'var(--green)',lbl:'Abonné'},
+      unit:{bg:'var(--blue2)',c:'var(--blue)',lbl:'Crédits'},
+      illimite:{bg:'#3A2A6B',c:'#B09FEE',lbl:'♾️ Illimité'},
+      offert:{bg:'#3A2A1A',c:'var(--gold)',lbl:'🎁 Offert'},
+      free:{bg:'var(--bg4)',c:'var(--text3)',lbl:'Gratuit'},
+    };
+    const s=styles[plan]||styles.free;
+    return <span className="pill" style={{background:s.bg,color:s.c,fontSize:11}}>{s.lbl}</span>;
+  };
+
+  return (
+    <div style={{maxWidth:960,margin:'0 auto'}}>
+      {selected&&<UserModal user={selected} onClose={()=>setSelected(null)} onSave={updated=>{setData(d=>d.map(u=>g(u,'Email')===g(updated,'Email')?updated:u));setSelected(null);}}/>}
+
+      <div style={{display:'flex',justifyContent:'space-between',alignItems:'flex-start',marginBottom:20,flexWrap:'wrap',gap:10}}>
+        <div>
+          <h1 style={{fontSize:24,marginBottom:4}}>Dashboard Admin — TA&I</h1>
+          <p style={{fontSize:12,color:'var(--text3)'}}>{ts?`Actualisé ${ts.toLocaleTimeString('fr-FR')} · Auto 30s`:'Chargement...'}{!sheetOk&&<span style={{color:'var(--gold)'}}> · Mode démo</span>}</p>
+        </div>
+        <div style={{display:'flex',gap:8}}>
+          <button className="btn-outline" onClick={load} disabled={loading} style={{fontSize:12,padding:'6px 12px'}}>{loading?<span className="spinner"/>:'↺ Actualiser'}</button>
+          <button className="btn-outline" onClick={onExit} style={{fontSize:13}}>← Retour</button>
+        </div>
+      </div>
+      {err&&<div style={{background:'var(--red2)',border:'1px solid var(--red)',borderRadius:'var(--r)',padding:'10px 14px',marginBottom:14,fontSize:13,color:'var(--red)'}}>{err}</div>}
+      <div style={{display:'grid',gridTemplateColumns:'repeat(4,1fr)',gap:12,marginBottom:20}}>
+        {[{l:'Utilisateurs',v:data.length,c:'var(--blue)'},{l:'Payants',v:paid,c:'var(--green)'},{l:'Requêtes',v:reqs,c:'var(--gold)'},{l:'Revenus',v:`${rev}€`,c:'var(--gold2)'}].map(m=>(
+          <div key={m.l} className="card" style={{textAlign:'center'}}>
+            <p style={{fontSize:11,color:'var(--text3)',marginBottom:4,textTransform:'uppercase',letterSpacing:'0.08em'}}>{m.l}</p>
+            <p style={{fontSize:26,fontWeight:700,color:m.c}}>{m.v}</p>
+          </div>
+        ))}
+      </div>
+      <div style={{marginBottom:12,display:'flex',gap:10,alignItems:'center',flexWrap:'wrap'}}>
+        <input placeholder="🔍 Email, restaurant, nom..." value={filter} onChange={e=>setFilter(e.target.value)} style={{maxWidth:300}}/>
+        <p style={{fontSize:12,color:'var(--text3)',marginLeft:'auto'}}>{fil.length} utilisateur{fil.length>1?'s':''} · <span style={{color:'var(--text3)'}}>Cliquer sur une ligne pour gérer l'accès</span></p>
+      </div>
+      {loading&&data.length===0?(
+        <div style={{textAlign:'center',padding:'3rem',color:'var(--text3)'}}><span className="spinner" style={{width:28,height:28}}/><p style={{marginTop:12}}>Chargement Google Sheets...</p></div>
+      ):(
+        <div className="card" style={{padding:0,overflow:'auto'}}>
+          <table style={{width:'100%',borderCollapse:'collapse',minWidth:700}}>
+            <thead><tr style={{background:'var(--bg3)'}}>
+              {['Restaurant','Contact','Téléphone','Requêtes','Crédits','Plan','Score','Accès'].map(h=>(
+                <th key={h} style={{padding:'10px 14px',textAlign:'left',fontSize:11,color:'var(--text3)',fontWeight:500,textTransform:'uppercase',letterSpacing:'0.06em',borderBottom:'1px solid var(--border)',whiteSpace:'nowrap'}}>{h}</th>
+              ))}
+            </tr></thead>
+            <tbody>
+              {fil.map((u,i)=>{
+                const plan=g(u,'Plan');
+                const rq=Number(g(u,'Nb requetes'))||Number(g(u,'Nb requêtes'))||0;
+                const sc=Number(g(u,'Score moyen'))||0;
+                const credManuels=Number(g(u,'Credits manuels'))||0;
+                return (
+                  <tr key={i} onClick={()=>setSelected(u)} style={{borderBottom:'1px solid var(--border)',background:i%2===0?'transparent':'var(--bg3)',cursor:'pointer',transition:'background 0.15s'}}
+                    onMouseEnter={e=>e.currentTarget.style.background='var(--bg4)'}
+                    onMouseLeave={e=>e.currentTarget.style.background=i%2===0?'transparent':'var(--bg3)'}>
+                    <td style={{padding:'11px 14px',fontSize:14,fontWeight:500}}>{g(u,'Restaurant')}</td>
+                    <td style={{padding:'11px 14px'}}><p style={{fontSize:14}}>{g(u,'Nom')}</p><p style={{fontSize:12,color:'var(--text3)'}}>{g(u,'Email')}</p></td>
+                    <td style={{padding:'11px 14px',fontSize:13,color:'var(--text2)'}}>{g(u,'Telephone')||g(u,'Téléphone')}</td>
+                    <td style={{padding:'11px 14px',textAlign:'center'}}><span style={{fontWeight:700,color:rq>5?'var(--green)':'var(--text)'}}>{rq}</span></td>
+                    <td style={{padding:'11px 14px',textAlign:'center'}}>
+                      {credManuels>0?<span style={{fontWeight:700,color:'var(--gold)'}}>{credManuels} bonus</span>:<span style={{color:'var(--text3)'}}>—</span>}
+                    </td>
+                    <td style={{padding:'11px 14px',textAlign:'center'}}>{planBadge(plan)}</td>
+                    <td style={{padding:'11px 14px',textAlign:'center'}}>{sc>0&&<span style={{color:sc>=15?'var(--green)':'var(--gold)',fontWeight:600}}>{sc.toFixed?sc.toFixed(1):sc}</span>}</td>
+                    <td style={{padding:'11px 14px',textAlign:'center'}}>
+                      <button onClick={e=>{e.stopPropagation();setSelected(u);}} className="btn-outline" style={{fontSize:11,padding:'4px 10px'}}>✏️ Gérer</button>
+                    </td>
+                  </tr>
+                );
+              })}
+              {fil.length===0&&!loading&&<tr><td colSpan={8} style={{padding:'2rem',textAlign:'center',color:'var(--text3)',fontSize:14}}>Aucun utilisateur</td></tr>}
+            </tbody>
+          </table>
+        </div>
+      )}
+      <div className="card" style={{marginTop:14,display:'flex',justifyContent:'space-between',alignItems:'center',flexWrap:'wrap',gap:10}}>
+        <div><p style={{fontSize:13,color:'var(--text2)',marginBottom:2}}>📊 Google Sheets — toutes les données brutes</p><p style={{fontSize:12,color:'var(--text3)'}}>Inscriptions, générations et paiements en temps réel</p></div>
+        {sheetOk?<a href={`https://docs.google.com/spreadsheets/d/${CONFIG.SHEET_ID}`} target="_blank" rel="noreferrer" style={{textDecoration:'none'}}><button className="btn-outline" style={{fontSize:13}}>→ Ouvrir Google Sheets</button></a>:<span style={{fontSize:12,color:'var(--text3)'}}>Configurer SHEET_ID dans CONFIG</span>}
+      </div>
+    </div>
+  );
+}
+
+function AdminLogin({onLogin}) {
+  const [pw,setPw]=useState('');
+  const [err,setErr]=useState(false);
+  const [loading,setLoading]=useState(false);
+  const go=async()=>{
+    setLoading(true);
+    try {
+      const r=await fetch('/api/admin-auth',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({password:pw})});
+      const d=await r.json();
+      if(d.ok){setErr(false);onLogin();}else{setErr(true);setPw('');}
+    } catch{setErr(true);setPw('');}
+    setLoading(false);
+  };
+  return (
+    <div style={{maxWidth:340,margin:'0 auto',paddingTop:'4rem'}}>
+      <div className="card" style={{textAlign:'center'}}>
+        <div style={{fontSize:32,marginBottom:12}}>🔐</div>
+        <h2 style={{fontSize:20,marginBottom:16}}>Accès Admin TA&I</h2>
+        <input type="password" placeholder="Mot de passe" value={pw} onChange={e=>{setPw(e.target.value);setErr(false);}} onKeyDown={e=>e.key==='Enter'&&go()} style={{marginBottom:err?8:16}} autoFocus/>
+        {err&&<p style={{color:'var(--red)',fontSize:13,marginBottom:12}}>Mot de passe incorrect</p>}
+        <button className="btn-gold" onClick={go} disabled={loading} style={{width:'100%',padding:'11px 20px'}}>
+          {loading?<span className="spinner"/>:'Connexion'}
+        </button>
+      </div>
+    </div>
+  );
+}
+
+function App() {
+  const [screen,setScreen]=useState('loading');
+  const [usage,setUsage]=useState(()=>Store.usage());
+  const [result,setResult]=useState(null);
+  const [lastForm,setLastForm]=useState(null);
+
+  useEffect(()=>{
+    if(window.location.hash==='#admin'){setScreen('admin-login');return;}
+    setScreen(usage.email?'form':'home');
+  },[]);
+
+  const save=v=>{setUsage(v);Store.save(v);};
+  const needsPay=!Store.canGen(usage);
+
+  return (
+    <div style={{minHeight:'100vh'}}>
+      <header style={{borderBottom:'1px solid var(--border)',padding:'14px 24px',display:'flex',justifyContent:'space-between',alignItems:'center',background:'var(--bg2)',position:'sticky',top:0,zIndex:100}}>
+        <div style={{display:'flex',alignItems:'center',gap:10,cursor:'pointer'}} onClick={()=>{if(screen==='admin'||screen==='admin-login')return;setScreen(usage.email?(needsPay?'paywall':'form'):'home');}}>
+          <div style={{width:32,height:32,background:'var(--gold3)',borderRadius:8,display:'flex',alignItems:'center',justifyContent:'center',fontSize:16,color:'#0A0A08',fontFamily:'serif',fontWeight:700}}>T</div>
+          <div><p style={{fontSize:14,fontWeight:600,letterSpacing:'0.02em'}}>TA&I Analyzer</p><p style={{fontSize:10,color:'var(--text3)',letterSpacing:'0.06em',textTransform:'uppercase'}}>Copywriting Menu · Henri F.</p></div>
+        </div>
+        <div style={{display:'flex',gap:8,alignItems:'center'}}>
+          {usage.resto&&screen!=='admin'&&screen!=='admin-login'&&<span style={{fontSize:12,color:'var(--text3)'}}>{usage.resto}</span>}
+          <a href="https://tai-food.com" target="_blank" rel="noreferrer" style={{textDecoration:'none'}}><button className="btn-outline" style={{fontSize:12,padding:'6px 12px'}}>tai-food.com →</button></a>
+        </div>
+      </header>
+      <main style={{padding:'2rem 1.5rem',maxWidth:960,margin:'0 auto'}}>
+        {screen==='loading'&&null}
+        {screen==='home'&&(
+          <div className="fade-in">
+            <div style={{textAlign:'center',padding:'3rem 0 2.5rem'}}>
+              <span className="pill" style={{background:'var(--bg3)',border:'1px solid var(--border2)',color:'var(--text3)',fontSize:12,marginBottom:20,display:'inline-block'}}>Copywriting Menu par Henri F. · TA&I</span>
+              <h1 style={{fontSize:'clamp(28px,5vw,46px)',marginBottom:16,background:'linear-gradient(135deg,var(--text) 40%,var(--gold))',WebkitBackgroundClip:'text',WebkitTextFillColor:'transparent'}}>Transformez vos menus<br/>en machine à vendre</h1>
+              <p style={{fontSize:18,color:'var(--text2)',maxWidth:500,margin:'0 auto 2rem',lineHeight:1.7}}>Le seul outil de copywriting menu conçu par un ancien chef. Déclenchez l'envie d'acheter dès la lecture.</p>
+              <div style={{display:'flex',gap:10,justifyContent:'center',flexWrap:'wrap',marginBottom:'2.5rem'}}>
+                {['+34% ventes plats copywrités','+47% prix moyen perçu','Score S affiché','10 formules neuro-marketing'].map(f=><span key={f} className="pill" style={{background:'var(--bg3)',border:'1px solid var(--border)',color:'var(--text2)',fontSize:13}}>✓ {f}</span>)}
+              </div>
+            </div>
+            <EmailGate onSubmit={f=>{const u={...usage,email:f.email,nom:f.nom,resto:f.resto,tel:f.tel||'',count:0,paid:false,plan:null};save(u);setScreen('form');}}/>
+          </div>
+        )}
+        {screen==='form'&&<GenForm usage={usage} onResult={(res,f)=>{save({...usage,count:usage.count+1});setResult(res);setLastForm(f);setScreen('result');}} onLogout={()=>{save({count:0,email:null,paid:false,plan:null,nom:'',resto:'',tel:''});setScreen('home');}}/>}
+        {screen==='result'&&result&&<ResultView result={result} formData={lastForm} usage={usage} onNew={()=>setScreen(needsPay?'paywall':'form')} onPaywall={()=>setScreen('paywall')}/>}
+        {screen==='paywall'&&<Paywall usage={usage} onPaySuccess={plan=>{save({...usage,paid:true,plan});setScreen('form');}}/>}
+        {screen==='admin-login'&&<AdminLogin onLogin={()=>setScreen('admin')}/>}
+        {screen==='admin'&&<AdminDash onExit={()=>{window.location.hash='';setScreen(usage.email?'form':'home');}}/>}
+      </main>
+      <footer style={{borderTop:'1px solid var(--border)',padding:'16px 24px',marginTop:'3rem',display:'flex',justifyContent:'space-between',alignItems:'center',flexWrap:'wrap',gap:8}}>
+        <p style={{fontSize:12,color:'var(--text3)'}}>© 2025 TA&I — Henri F. · Copywriting Stratégique Restauration</p>
+        <div style={{display:'flex',gap:16,alignItems:'center'}}>
+          <a href="https://tai-food.com" target="_blank" rel="noreferrer" style={{fontSize:12,color:'var(--text3)',textDecoration:'none'}}>tai-food.com</a>
+          <button onClick={()=>{window.location.hash='admin';setScreen('admin-login');}} style={{background:'none',border:'none',fontSize:12,color:'var(--text3)',cursor:'pointer'}}>Admin</button>
+        </div>
+      </footer>
+    </div>
+  );
+}
+
+ReactDOM.createRoot(document.getElementById('root')).render(<App/>);
+</script>
+</body>
+</html>
