@@ -140,7 +140,7 @@ function EmailGate({onSubmit}) {
     if(Object.keys(e).length){setErr(e);return;}
     setLoading(true);
     try {
-      // Vérification anti-contournement: charger l'état réel depuis Google Sheets
+     // Vérification anti-contournement: charger l'état réel depuis Google Sheets
       let existingState = null;
       try {
         const r = await fetch(`/api/get-usage?email=${encodeURIComponent(email)}`);
@@ -149,10 +149,7 @@ function EmailGate({onSubmit}) {
           if (d.exists) existingState = d;
         }
       } catch(ex) { console.warn('get-usage:', ex.message); }
-
-      if (!existingState) {
-        await log({action:'signup',nom,resto,email,tel});
-      }
+      await log({action:'signup',nom,resto,email,tel});
       onSubmit({nom,resto,email,tel, existingState});
     } finally {
       setLoading(false);
