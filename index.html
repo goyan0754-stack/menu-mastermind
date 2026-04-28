@@ -80,7 +80,7 @@ const Store = {
 
 async function log(data) {
   try {
-    await fetch('/api/log', {
+    await fetch('/api/supabase-log', {
       method: 'POST',
       headers: {'Content-Type': 'application/json'},
       body: JSON.stringify({...data, timestamp: new Date().toISOString()})
@@ -90,7 +90,7 @@ async function log(data) {
 
 async function loadAdminData() {
   try {
-    const r = await fetch('/api/admin-users?t='+Date.now());
+    const r = await fetch('/api/supabase-admin-users?t='+Date.now());
     if (!r.ok) throw new Error(`HTTP ${r.status}`);
     const j = await r.json();
     return j.users || [];
@@ -142,8 +142,15 @@ function EmailGate({onSubmit}) {
     if(!/\S+@\S+\.\S+/.test(email))e.email='Email invalide';
     if(Object.keys(e).length){setErr(e);return;}
     setLoading(true);
-    await log({action:'signup',nom,resto,email,tel});
-    onSubmit({nom,resto,email,tel});
+    try {
+      let existingState = null;
+      try {
+        const r = await fetch(`/api/supabase-get-usage?email=${encodeURIComponent(email)}`);
+        if (r.ok) { const d = await r.json(); if (d.exists) existingState = d; }
+      } catch(ex) { console.warn('get-usage:', ex.message); }
+      await log({action:'signup',nom,resto,email,tel});
+      onSubmit({nom,resto,email,tel, existingState});
+    } finally { setLoading(false); }
   };
   return (
     <div style={{maxWidth:440,margin:'0 auto'}}>
@@ -363,13 +370,13 @@ function UserModal({user, onClose, onSave}) {
 
   const save=async()=>{
     setSaving(true);
-    await log({
-      action:'admin_update',
-      email:g('Email'),
-      plan,
-      credits_manuels:credits,
-      updated_by:'admin',
-    });
+    try {
+      await fetch('/api/supabase-admin-update-user', {
+        method: 'POST',
+        headers: {'Content-Type':'application/json'},
+        body: JSON.stringify({email: g('Email'), plan, credits_manuels: credits}),
+      });
+    } catch(e) { console.warn('admin-update-user:', e.message); }
     setSaved(true);
     setTimeout(()=>{setSaved(false);onSave({...user,Plan:plan,'Credits manuels':credits});},1000);
     setSaving(false);
@@ -1024,7 +1031,22 @@ function App() {
                 {['+34% ventes plats copywrités','+47% prix moyen perçu','Score S affiché','10 formules neuro-marketing'].map(f=><span key={f} className="pill" style={{background:'var(--bg3)',border:'1px solid var(--border)',color:'var(--text2)',fontSize:13}}>✓ {f}</span>)}
               </div>
             </div>
-            <EmailGate onSubmit={f=>{const u={...usage,email:f.email,nom:f.nom,resto:f.resto,tel:f.tel||'',count:0,paid:false,plan:null};save(u);setScreen('form');}}/>
+            <EmailGate onSubmit={f=>{
+              let u;
+              if (f.existingState) {
+                u = {
+                  ...usage,
+                  email: f.email, nom: f.nom, resto: f.resto, tel: f.tel||'',
+                  count: f.existingState.count || 0,
+                  paid: f.existingState.paid || false,
+                  plan: f.existingState.plan || null,
+                  credits_bonus: f.existingState.credits_bonus || 0,
+                };
+              } else {
+                u = {...usage,email:f.email,nom:f.nom,resto:f.resto,tel:f.tel||'',count:0,paid:false,plan:null,credits_bonus:0};
+              }
+              save(u);setScreen('form');
+            }}/>
           </div>
         )}
         {screen==='form'&&<GenForm usage={usage} onResult={(res,f)=>{save({...usage,count:usage.count+1});setResult(res);setLastForm(f);setScreen('result');}} onLogout={()=>{save({count:0,email:null,paid:false,plan:null,nom:'',resto:'',tel:''});setScreen('home');}}/>}
