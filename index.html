@@ -114,6 +114,8 @@ async function syncUserState(email) {
     return d;
   } catch(e) { return null; }
 }
+
+async function callZoran(d) {
   const r = await fetch('/api/generate', {
     method:'POST',
     headers:{'Content-Type':'application/json'},
