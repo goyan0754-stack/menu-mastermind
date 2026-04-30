@@ -52,9 +52,9 @@ const CONFIG = {
   ANTHROPIC_API_KEY:  "",
   SHEETS_WEBHOOK:     "",
   SHEET_ID:           "137tAykDIpaSsTkjjFzPuw4rOCKw5UXnCh540WGduU08",
-  STRIPE_URL_9EUR:    "https://buy.stripe.com/9B6fZhbSZdxxbPNdZ8d7q02",
+  STRIPE_URL_7EUR:    "https://buy.stripe.com/9B6fZhbSZdxxbPNdZ8d7q02",
   STRIPE_URL_29EUR:   "https://buy.stripe.com/7sYdR9cX38dd075bR0d7q03",
-  FREE_QUOTA: 3, PRICE_UNIT: 9, PRICE_ABO: 29,
+  FREE_QUOTA: 3, PRICE_UNIT: 7, PRICE_ABO: 29,
 };
 
 // Prompt Zoran — côté serveur uniquement dans api/generate.js
@@ -104,7 +104,16 @@ async function loadAdminData() {
   }
 }
 
-async function callZoran(d) {
+// Synchronise l'état réel depuis Supabase au démarrage
+async function syncUserState(email) {
+  try {
+    const r = await fetch(`/api/supabase-get-usage?email=${encodeURIComponent(email)}`);
+    if (!r.ok) return null;
+    const d = await r.json();
+    if (!d.exists) return null;
+    return d;
+  } catch(e) { return null; }
+}
   const r = await fetch('/api/generate', {
     method:'POST',
     headers:{'Content-Type':'application/json'},
@@ -188,12 +197,12 @@ function EmailGate({onSubmit}) {
 }
 
 function Paywall({usage,onPaySuccess}) {
-  const ok = CONFIG.STRIPE_URL_9EUR!=='VOTRE_LIEN_STRIPE_9EUR';
+  const ok = CONFIG.STRIPE_URL_7EUR!=='VOTRE_LIEN_STRIPE_7EUR';
   const pay=type=>{
-    if(!ok){if(window.confirm(`Mode démo — simuler paiement ${type==='unit'?'9':'29'}€ ?`))onPaySuccess(type==='abo'?'abo':'unit');return;}
+    if(!ok){if(window.confirm(`Mode démo — simuler paiement ${type==='unit'?'7':'29'}€ ?`))onPaySuccess(type==='abo'?'abo':'unit');return;}
     const email=encodeURIComponent(usage.email||'');
-    log({action:'payment_intent',email:usage.email,resto:usage.resto,type,amount:type==='unit'?9:29});
-    window.open(`${type==='unit'?CONFIG.STRIPE_URL_9EUR:CONFIG.STRIPE_URL_29EUR}?prefilled_email=${email}`,'_blank');
+    log({action:'payment_intent',email:usage.email,resto:usage.resto,type,amount:type==='unit'?7:29});
+    window.open(`${type==='unit'?CONFIG.STRIPE_URL_7EUR:CONFIG.STRIPE_URL_29EUR}?prefilled_email=${email}`,'_blank');
   };
   return (
     <div style={{maxWidth:520,margin:'0 auto'}}>
@@ -366,7 +375,7 @@ function UserModal({user, onClose, onSave}) {
   const [saving,setSaving]=useState(false);
   const [saved,setSaved]=useState(false);
 
-  const planLabel={free:'Gratuit (3 descriptions)',abo:'Abonné 29€/mois',unit:'Crédits payants',illimite:'♾️ Accès illimité',offert:'🎁 Offert par Henri'};
+  const planLabel={free:'Gratuit (3 descriptions)',abo:'Abonné 29€/mois',unit:'Crédits payants',illimite:'♾️ Accès illimité',offert:'🎁 Offert par Henri',suspended:'⛔ Suspendu'};
 
   const save=async()=>{
     setSaving(true);
@@ -380,6 +389,19 @@ function UserModal({user, onClose, onSave}) {
     setSaved(true);
     setTimeout(()=>{setSaved(false);onSave({...user,Plan:plan,'Credits manuels':credits});},1000);
     setSaving(false);
+  };
+
+  const deleteUser=async()=>{
+    if(!window.confirm(`Supprimer définitivement le compte de ${g('Email')} ? Cette action est irréversible.`)) return;
+    try {
+      await fetch('/api/supabase-admin-update-user', {
+        method: 'POST',
+        headers: {'Content-Type':'application/json'},
+        body: JSON.stringify({email: g('Email'), plan: 'deleted', credits_manuels: 0, deleted: true}),
+      });
+    } catch(e) { console.warn('delete-user:', e.message); }
+    onSave(null);
+    onClose();
   };
 
   return (
@@ -427,14 +449,26 @@ function UserModal({user, onClose, onSave}) {
             <button onClick={()=>setCredits(c=>c+10)} className="btn-outline" style={{fontSize:12,padding:'6px 10px',flexShrink:0}}>+10</button>
             <button onClick={()=>setCredits(0)} className="btn-outline" style={{fontSize:12,padding:'6px 10px',flexShrink:0,color:'var(--red)'}}>Reset</button>
           </div>
-          <p style={{fontSize:11,color:'var(--text3)',marginTop:6}}>Ces crédits s'ajoutent au quota gratuit et aux éventuels achats.</p>
+          <p style={{fontSize:11,color:'var(--text3)',marginTop:6}}>Ces crédits s'ajoutent au quota gratuit. Règle : 1 acheté = 1 offert (doublez les tokens achetés).</p>
+          <div style={{display:'flex',gap:8,marginTop:8}}>
+            <button onClick={()=>setCredits(c=>c+2)} className="btn-outline" style={{fontSize:12,padding:'6px 10px',flexShrink:0,color:'var(--gold)'}}>+2 (1 acheté = 1 offert)</button>
+            <button onClick={()=>setCredits(c=>c+20)} className="btn-outline" style={{fontSize:12,padding:'6px 10px',flexShrink:0,color:'var(--gold)'}}>+20 (10 achetés = 10 offerts)</button>
+          </div>
         </div>
 
-        <div style={{display:'flex',gap:10}}>
+        <div style={{display:'flex',gap:10,marginBottom:10}}>
           <button className="btn-gold" onClick={save} disabled={saving} style={{flex:1,padding:'11px'}}>
             {saved?'✓ Sauvegardé !':saving?<span className="spinner"/>:'Appliquer les modifications'}
           </button>
           <button className="btn-outline" onClick={onClose} style={{padding:'11px 16px'}}>Annuler</button>
+        </div>
+        <div style={{display:'flex',gap:8}}>
+          <button onClick={()=>{setPlan('suspended');}} className="btn-outline" style={{flex:1,padding:'8px',fontSize:12,color:'var(--gold)',borderColor:'var(--gold3)'}}>
+            ⏸ {plan==='suspended'?'Déjà suspendu':'Suspendre le compte'}
+          </button>
+          <button onClick={deleteUser} className="btn-outline" style={{flex:1,padding:'8px',fontSize:12,color:'var(--red)',borderColor:'var(--red2)'}}>
+            🗑 Supprimer définitivement
+          </button>
         </div>
       </div>
     </div>
@@ -483,7 +517,11 @@ function AdminDash({onExit}) {
 
   return (
     <div style={{maxWidth:960,margin:'0 auto'}}>
-      {selected&&<UserModal user={selected} onClose={()=>setSelected(null)} onSave={updated=>{setData(d=>d.map(u=>g(u,'Email')===g(updated,'Email')?updated:u));setSelected(null);}}/>}
+      {selected&&<UserModal user={selected} onClose={()=>setSelected(null)} onSave={updated=>{
+        if(updated===null){setData(d=>d.filter(u=>g(u,'Email')!==g(selected,'Email')));}
+        else{setData(d=>d.map(u=>g(u,'Email')===g(updated,'Email')?updated:u));}
+        setSelected(null);
+      }}/>}
 
       <div style={{display:'flex',justifyContent:'space-between',alignItems:'flex-start',marginBottom:20,flexWrap:'wrap',gap:10}}>
         <div>
@@ -996,7 +1034,32 @@ function App() {
 
   useEffect(()=>{
     if(window.location.hash==='#admin'){setScreen('admin-login');return;}
-    setScreen(usage.email?'form':'home');
+    const u = Store.usage();
+    if(u.email) {
+      // Synchroniser le plan depuis Supabase au démarrage
+      syncUserState(u.email).then(state => {
+        if(state) {
+          const updated = {
+            ...u,
+            count: state.count || u.count,
+            plan: state.plan || u.plan,
+            credits_bonus: state.credits_bonus || u.credits_bonus,
+            paid: state.paid || u.paid,
+            suspended: state.suspended || false,
+          };
+          save(updated);
+          if(state.suspended) {
+            setScreen('suspended');
+          } else {
+            setScreen('form');
+          }
+        } else {
+          setScreen('form');
+        }
+      });
+    } else {
+      setScreen('home');
+    }
   },[]);
 
   const save=v=>{setUsage(v);Store.save(v);};
@@ -1020,6 +1083,16 @@ function App() {
         </div>
       </header>
       <main style={{padding:'2rem 1.5rem',maxWidth:960,margin:'0 auto'}}>
+        {screen==='suspended'&&(
+          <div style={{maxWidth:440,margin:'4rem auto',textAlign:'center'}} className="fade-in">
+            <div className="card">
+              <div style={{fontSize:48,marginBottom:16}}>🔒</div>
+              <h2 style={{fontSize:22,marginBottom:12}}>Compte suspendu</h2>
+              <p style={{color:'var(--text2)',fontSize:14,marginBottom:20}}>Votre compte a été temporairement suspendu. Contactez-nous pour plus d'informations.</p>
+              <a href="mailto:contact@tai-food.com" style={{color:'var(--gold)',fontSize:14}}>contact@tai-food.com</a>
+            </div>
+          </div>
+        )}
         {screen==='loading'&&null}
         {screen==='home'&&(
           <div className="fade-in">
