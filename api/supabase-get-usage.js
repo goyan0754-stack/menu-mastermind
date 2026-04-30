@@ -22,7 +22,7 @@ export default async function handler(req, res) {
 
   try {
     const r = await fetch(
-      `${SUPABASE_URL}/rest/v1/utilisateurs?email=eq.${encodeURIComponent(email)}&select=email,count,plan,credits_bonus`,
+      `${SUPABASE_URL}/rest/v1/utilisateurs?email=eq.${encodeURIComponent(email)}&select=email,count,plan,credits_bonus,suspended`,
       {
         headers: {
           'apikey': SUPABASE_KEY,
@@ -45,7 +45,8 @@ export default async function handler(req, res) {
       count: Number(user.count) || 0,
       plan: user.plan || null,
       credits_bonus: Number(user.credits_bonus) || 0,
-      paid: user.plan && user.plan !== 'free' ? true : false,
+      paid: user.plan && user.plan !== 'free' && user.plan !== 'suspended' ? true : false,
+      suspended: user.suspended || false,
     });
 
   } catch (e) {
