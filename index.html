@@ -345,7 +345,7 @@ function ResultView({result,formData,usage,onNew,onPaywall}) {
   );
 }
 
-function UserModal({user, onClose, onSave}) {
+function UserModal({user, onClose, onSave, onDelete}) {
   const g=(k)=>user[k]??'';
   const planActuel=g('Plan');
   const creditsActuels=Number(g('Credits manuels'))||0;
@@ -354,6 +354,8 @@ function UserModal({user, onClose, onSave}) {
   const [credits,setCredits]=useState(creditsActuels);
   const [saving,setSaving]=useState(false);
   const [saved,setSaved]=useState(false);
+  const [deleting,setDeleting]=useState(false);
+  const [confirmDelete,setConfirmDelete]=useState(false);
 
   const planLabel={free:'Gratuit (3 descriptions)',abo:'Abonné 29€/mois',unit:'Crédits payants',illimite:'♾️ Accès illimité',offert:'🎁 Offert par Henri'};
 
@@ -369,6 +371,12 @@ function UserModal({user, onClose, onSave}) {
     setSaved(true);
     setTimeout(()=>{setSaved(false);onSave({...user,Plan:plan,'Credits manuels':credits});},1000);
     setSaving(false);
+  };
+
+  const doDelete=async()=>{
+    setDeleting(true);
+    await log({ action:'admin_delete', email:g('Email'), updated_by:'admin' });
+    setTimeout(()=>{ onDelete(g('Email')); },500);
   };
 
   return (
@@ -419,11 +427,28 @@ function UserModal({user, onClose, onSave}) {
           <p style={{fontSize:11,color:'var(--text3)',marginTop:6}}>Ces crédits s'ajoutent au quota gratuit et aux éventuels achats.</p>
         </div>
 
-        <div style={{display:'flex',gap:10}}>
-          <button className="btn-gold" onClick={save} disabled={saving} style={{flex:1,padding:'11px'}}>
-            {saved?'✓ Sauvegardé !':saving?<span className="spinner"/>:'Appliquer les modifications'}
-          </button>
-          <button className="btn-outline" onClick={onClose} style={{padding:'11px 16px'}}>Annuler</button>
+        <div style={{display:'flex',gap:10,flexDirection:'column'}}>
+          <div style={{display:'flex',gap:10}}>
+            <button className="btn-gold" onClick={save} disabled={saving||deleting} style={{flex:1,padding:'11px'}}>
+              {saved?'✓ Sauvegardé !':saving?<span className="spinner"/>:'Appliquer les modifications'}
+            </button>
+            <button className="btn-outline" onClick={onClose} style={{padding:'11px 16px'}}>Annuler</button>
+          </div>
+          {!confirmDelete ? (
+            <button onClick={()=>setConfirmDelete(true)} disabled={deleting} className="btn-outline" style={{padding:'9px',fontSize:12,color:'var(--red)',borderColor:'var(--red2)',width:'100%'}}>
+              🗑️ Supprimer cet utilisateur
+            </button>
+          ) : (
+            <div style={{background:'var(--red2)',border:'1px solid var(--red)',borderRadius:'var(--r)',padding:'10px 14px',display:'flex',alignItems:'center',justifyContent:'space-between',gap:10}}>
+              <span style={{fontSize:13,color:'var(--red)'}}>Confirmer la suppression de {g('Email')} ?</span>
+              <div style={{display:'flex',gap:8',flexShrink:0}}>
+                <button onClick={doDelete} disabled={deleting} style={{background:'var(--red)',color:'#fff',border:'none',borderRadius:'var(--r)',padding:'6px 12px',fontSize:12,cursor:'pointer',fontWeight:600}}>
+                  {deleting?<span className="spinner"/>:'Oui, supprimer'}
+                </button>
+                <button onClick={()=>setConfirmDelete(false)} className="btn-outline" style={{padding:'6px 12px',fontSize:12}}>Annuler</button>
+              </div>
+            </div>
+          )}
         </div>
       </div>
     </div>
@@ -472,7 +497,7 @@ function AdminDash({onExit}) {
 
   return (
     <div style={{maxWidth:960,margin:'0 auto'}}>
-      {selected&&<UserModal user={selected} onClose={()=>setSelected(null)} onSave={updated=>{setData(d=>d.map(u=>g(u,'Email')===g(updated,'Email')?updated:u));setSelected(null);}}/>}
+      {selected&&<UserModal user={selected} onClose={()=>setSelected(null)} onSave={updated=>{setData(d=>d.map(u=>g(u,'Email')===g(updated,'Email')?updated:u));setSelected(null);}} onDelete={email=>{setData(d=>d.filter(u=>g(u,'Email')!==email));setSelected(null);}}/>}
 
       <div style={{display:'flex',justifyContent:'space-between',alignItems:'flex-start',marginBottom:20,flexWrap:'wrap',gap:10}}>
         <div>
