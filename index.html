@@ -44,7 +44,7 @@ button:disabled{opacity:0.5;cursor:not-allowed}
 <div id="root"></div>
 <script type="text/babel">
 const { useState, useEffect, useCallback } = React;
- 
+
 // ╔══════════════════════════════════════════════════════╗
 // ║  CONFIG — COLLE TES 5 VALEURS ICI, C'EST TOUT        ║
 // ╚══════════════════════════════════════════════════════╝
@@ -56,9 +56,9 @@ const CONFIG = {
   STRIPE_URL_29EUR:   "https://buy.stripe.com/7sYdR9cX38dd075bR0d7q03",
   FREE_QUOTA: 3, PRICE_UNIT: 9, PRICE_ABO: 29,
 };
- 
+
 // Prompt Zoran — côté serveur uniquement dans api/generate.js
- 
+
 // Utilitaires
 const Store = {
   get: k => { try { return JSON.parse(localStorage.getItem(k)); } catch { return null; } },
@@ -77,26 +77,29 @@ const Store = {
     return Math.max(0, CONFIG.FREE_QUOTA + (u.credits_bonus || 0) - u.count);
   }
 };
- 
+
 async function log(data) {
-  if (!CONFIG.SHEETS_WEBHOOK || CONFIG.SHEETS_WEBHOOK==='VOTRE_URL_APPS_SCRIPT') return;
-  try { await fetch(CONFIG.SHEETS_WEBHOOK,{method:'POST',mode:'no-cors',headers:{'Content-Type':'application/json'},body:JSON.stringify({...data,timestamp:new Date().toISOString()})}); }
-  catch(e) { console.warn('Sheets:',e.message); }
+  try {
+    await fetch('/api/log', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(data)
+    });
+  } catch(e) { console.warn('Log:', e.message); }
 }
- 
+
 async function loadAdminData() {
-  if (!CONFIG.SHEETS_WEBHOOK || CONFIG.SHEETS_WEBHOOK==='VOTRE_URL_APPS_SCRIPT') {
-    return [
-      {Email:'marie@bistrot.fr',Nom:'Marie',Restaurant:'Le Bistrot du Port',Telephone:'0612345678','Nb requetes':5,'Total depense':27,Plan:'abo','Score moyen':16.2,'Derniere activite':'19/04 14:23'},
-      {Email:'jean@provence.fr',Nom:'Jean',Restaurant:'La Provence',Telephone:'0698765432','Nb requetes':3,'Total depense':0,Plan:'free','Score moyen':14.8,'Derniere activite':'18/04 10:11'},
-      {Email:'sophie@jardin.fr',Nom:'Sophie',Restaurant:'Le Jardin Secret',Telephone:'0645678901','Nb requetes':12,'Total depense':58,Plan:'abo','Score moyen':17.4,'Derniere activite':'19/04 09:05'},
-    ];
+  try {
+    const r = await fetch('/api/admin-users?t=' + Date.now());
+    if (!r.ok) throw new Error('indisponible');
+    const j = await r.json();
+    return j.users || [];
+  } catch(e) {
+    console.warn('Admin data:', e.message);
+    return [];
   }
-  const r = await fetch(CONFIG.SHEETS_WEBHOOK+'?action=getUsers&t='+Date.now());
-  const j = await r.json();
-  return j.users || [];
 }
- 
+
 async function callZoran(d) {
   const r = await fetch('/api/generate', {
     method:'POST',
@@ -109,18 +112,18 @@ async function callZoran(d) {
   if (!r.ok) { const e=await r.json().catch(()=>({})); throw new Error(e.error||`Erreur ${r.status}`); }
   return await r.json();
 }
- 
+
 // Composants
 function ScoreBadge({score}) {
   const s=Number(score)||0, c=s>=15?'#4CAF7A':s>=8?'#C8A86B':'#E85555';
   return <div style={{display:'inline-flex',alignItems:'center',gap:6,background:`${c}18`,border:`1px solid ${c}50`,borderRadius:20,padding:'4px 12px'}}><span style={{fontWeight:700,color:c,fontSize:16}}>S={s.toFixed(1)}</span><span style={{fontSize:11,color:c}}>{s>=15?'Exceptionnel':s>=8?'Bon':'Faible'}</span></div>;
 }
- 
+
 function Bar({label,value}) {
   const v=Number(value)||0;
   return <div style={{marginBottom:5}}><div style={{display:'flex',justifyContent:'space-between',marginBottom:2}}><span style={{fontSize:12,color:'var(--text3)'}}>{label}</span><span style={{fontSize:12,color:'var(--text2)'}}>{v.toFixed(2)}</span></div><div style={{height:3,background:'var(--bg4)',borderRadius:2}}><div style={{height:3,background:'var(--gold)',borderRadius:2,width:`${Math.min(v*100,100)}%`,transition:'width 1s'}}/></div></div>;
 }
- 
+
 function EmailGate({onSubmit}) {
   const [nom,setNom]=useState('');
   const [resto,setResto]=useState('');
@@ -172,7 +175,7 @@ function EmailGate({onSubmit}) {
     </div>
   );
 }
- 
+
 function Paywall({usage,onPaySuccess}) {
   const ok = CONFIG.STRIPE_URL_9EUR!=='VOTRE_LIEN_STRIPE_9EUR';
   const pay=type=>{
@@ -207,7 +210,7 @@ function Paywall({usage,onPaySuccess}) {
     </div>
   );
 }
- 
+
 function GenForm({usage,onResult,onLogout}) {
   const [nomPlat,setNomPlat]=useState('');
   const [typePlat,setTypePlat]=useState('viande');
@@ -289,7 +292,7 @@ function GenForm({usage,onResult,onLogout}) {
     </div>
   );
 }
- 
+
 function ResCard({variant,label}) {
   const [cp,setCp]=useState(false);
   return (
@@ -306,7 +309,7 @@ function ResCard({variant,label}) {
     </div>
   );
 }
- 
+
 function ResultView({result,formData,usage,onNew,onPaywall}) {
   const done=!usage.paid&&usage.count>=CONFIG.FREE_QUOTA;
   return (
@@ -322,7 +325,7 @@ function ResultView({result,formData,usage,onNew,onPaywall}) {
       <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:16,marginBottom:18}}>
         <ResCard variant={result.variante_a} label="A"/><ResCard variant={result.variante_b} label="B"/>
       </div>
- 
+
       {result.conseil_pro&&(
         <div className="card" style={{borderLeft:'3px solid var(--gold3)',borderRadius:'0 var(--r2) var(--r2) 0',marginBottom:18}}>
           <p style={{fontSize:12,color:'var(--gold3)',marginBottom:6,textTransform:'uppercase',letterSpacing:'0.08em'}}>💡 Conseil pro TA&I</p>
@@ -341,19 +344,19 @@ function ResultView({result,formData,usage,onNew,onPaywall}) {
     </div>
   );
 }
- 
+
 function UserModal({user, onClose, onSave}) {
   const g=(k)=>user[k]??'';
   const planActuel=g('Plan');
   const creditsActuels=Number(g('Credits manuels'))||0;
- 
+
   const [plan,setPlan]=useState(planActuel||'free');
   const [credits,setCredits]=useState(creditsActuels);
   const [saving,setSaving]=useState(false);
   const [saved,setSaved]=useState(false);
- 
+
   const planLabel={free:'Gratuit (3 descriptions)',abo:'Abonné 29€/mois',unit:'Crédits payants',illimite:'♾️ Accès illimité',offert:'🎁 Offert par Henri'};
- 
+
   const save=async()=>{
     setSaving(true);
     await log({
@@ -367,7 +370,7 @@ function UserModal({user, onClose, onSave}) {
     setTimeout(()=>{setSaved(false);onSave({...user,Plan:plan,'Credits manuels':credits});},1000);
     setSaving(false);
   };
- 
+
   return (
     <div style={{position:'fixed',inset:0,background:'rgba(0,0,0,0.75)',zIndex:1000,display:'flex',alignItems:'center',justifyContent:'center',padding:'1rem'}} onClick={onClose}>
       <div className="card fade-in" style={{maxWidth:480,width:'100%',padding:'1.5rem'}} onClick={e=>e.stopPropagation()}>
@@ -378,7 +381,7 @@ function UserModal({user, onClose, onSave}) {
           </div>
           <button onClick={onClose} style={{background:'none',border:'none',color:'var(--text3)',fontSize:20,cursor:'pointer',padding:'0 4px'}}>✕</button>
         </div>
- 
+
         <div style={{display:'grid',gridTemplateColumns:'1fr 1fr 1fr',gap:10,marginBottom:20}}>
           {[
             {l:'Requêtes',v:Number(g('Nb requetes'))||Number(g('Nb requêtes'))||0,c:'var(--gold)'},
@@ -391,7 +394,7 @@ function UserModal({user, onClose, onSave}) {
             </div>
           ))}
         </div>
- 
+
         <div style={{marginBottom:18}}>
           <p style={{fontSize:12,color:'var(--text3)',marginBottom:8,textTransform:'uppercase',letterSpacing:'0.06em'}}>Type d'accès</p>
           <div style={{display:'flex',flexDirection:'column',gap:8}}>
@@ -403,7 +406,7 @@ function UserModal({user, onClose, onSave}) {
             ))}
           </div>
         </div>
- 
+
         <div style={{marginBottom:20}}>
           <p style={{fontSize:12,color:'var(--text3)',marginBottom:8,textTransform:'uppercase',letterSpacing:'0.06em'}}>Crédits supplémentaires manuels</p>
           <div style={{display:'flex',alignItems:'center',gap:10}}>
@@ -415,7 +418,7 @@ function UserModal({user, onClose, onSave}) {
           </div>
           <p style={{fontSize:11,color:'var(--text3)',marginTop:6}}>Ces crédits s'ajoutent au quota gratuit et aux éventuels achats.</p>
         </div>
- 
+
         <div style={{display:'flex',gap:10}}>
           <button className="btn-gold" onClick={save} disabled={saving} style={{flex:1,padding:'11px'}}>
             {saved?'✓ Sauvegardé !':saving?<span className="spinner"/>:'Appliquer les modifications'}
@@ -426,7 +429,7 @@ function UserModal({user, onClose, onSave}) {
     </div>
   );
 }
- 
+
 function AdminDash({onExit}) {
   const [data,setData]=useState([]);
   const [loading,setLoading]=useState(true);
@@ -434,16 +437,16 @@ function AdminDash({onExit}) {
   const [filter,setFilter]=useState('');
   const [ts,setTs]=useState(null);
   const [selected,setSelected]=useState(null);
- 
+
   const load=useCallback(async()=>{
     setLoading(true);setErr('');
     try{const d=await loadAdminData();setData(d);setTs(new Date());}
     catch(e){setErr(e.message);}
     finally{setLoading(false);}
   },[]);
- 
+
   useEffect(()=>{load();const t=setInterval(load,30000);return()=>clearInterval(t);},[load]);
- 
+
   const g=(u,k)=>u[k]??u[k.replace(' ','_')]??'';
   const fil=data.filter(u=>{
     if(!filter)return true;
@@ -454,7 +457,7 @@ function AdminDash({onExit}) {
   const reqs=data.reduce((s,u)=>s+(Number(g(u,'Nb requetes'))||Number(g(u,'Nb requêtes'))||0),0);
   const paid=data.filter(u=>g(u,'Plan')!=='free'&&g(u,'Plan')!=='').length;
   const sheetOk=CONFIG.SHEET_ID!=='VOTRE_SHEET_ID';
- 
+
   const planBadge=(plan)=>{
     const styles={
       abo:{bg:'var(--green2)',c:'var(--green)',lbl:'Abonné'},
@@ -466,11 +469,11 @@ function AdminDash({onExit}) {
     const s=styles[plan]||styles.free;
     return <span className="pill" style={{background:s.bg,color:s.c,fontSize:11}}>{s.lbl}</span>;
   };
- 
+
   return (
     <div style={{maxWidth:960,margin:'0 auto'}}>
       {selected&&<UserModal user={selected} onClose={()=>setSelected(null)} onSave={updated=>{setData(d=>d.map(u=>g(u,'Email')===g(updated,'Email')?updated:u));setSelected(null);}}/>}
- 
+
       <div style={{display:'flex',justifyContent:'space-between',alignItems:'flex-start',marginBottom:20,flexWrap:'wrap',gap:10}}>
         <div>
           <h1 style={{fontSize:24,marginBottom:4}}>Dashboard Admin — TA&I</h1>
@@ -541,7 +544,7 @@ function AdminDash({onExit}) {
     </div>
   );
 }
- 
+
 function AdminLogin({onLogin}) {
   const [pw,setPw]=useState('');
   const [err,setErr]=useState(false);
@@ -569,24 +572,24 @@ function AdminLogin({onLogin}) {
     </div>
   );
 }
- 
+
 // ═══════════════════════════════════════════════════
 // MODULE SMART PILOTAGE — Fournisseurs + Stocks + IA
 // ═══════════════════════════════════════════════════
- 
+
 const StorePilotage = {
   _key: (email) => 'tai_pilotage_' + btoa(encodeURIComponent(email || 'anonymous')),
   get: (email) => { try { return JSON.parse(localStorage.getItem(StorePilotage._key(email))) || { fournisseurs:[], stocks:[], chat:[] }; } catch { return { fournisseurs:[], stocks:[], chat:[] }; } },
   save: (v, email) => localStorage.setItem(StorePilotage._key(email), JSON.stringify(v)),
 };
- 
+
 // ─── FOURNISSEURS ────────────────────────────────
 function FournisseursForm({ data, onSave }) {
   const [fournisseurs, setF] = useState(data.fournisseurs || []);
   const [nom, setNom] = useState('');
   const [produits, setProduits] = useState('');
   const [tel, setTel] = useState('');
- 
+
   const add = () => {
     if (!nom.trim() || !produits.trim()) return;
     const newF = [...fournisseurs, { id: Date.now(), nom: nom.trim(), produits: produits.trim(), tel: tel.trim() }];
@@ -594,13 +597,13 @@ function FournisseursForm({ data, onSave }) {
     onSave({ ...data, fournisseurs: newF });
     setNom(''); setProduits(''); setTel('');
   };
- 
+
   const remove = id => {
     const newF = fournisseurs.filter(f => f.id !== id);
     setF(newF);
     onSave({ ...data, fournisseurs: newF });
   };
- 
+
   return (
     <div>
       <h3 style={{ fontSize: 15, marginBottom: 14, color: 'var(--gold2)' }}>📦 Mes fournisseurs</h3>
@@ -639,7 +642,7 @@ function FournisseursForm({ data, onSave }) {
     </div>
   );
 }
- 
+
 // ─── STOCKS ──────────────────────────────────────
 function StocksForm({ data, onSave }) {
   const [stocks, setS] = useState(data.stocks || []);
@@ -648,7 +651,7 @@ function StocksForm({ data, onSave }) {
   const [unite, setUnite] = useState('kg');
   const [conso, setConso] = useState('');
   const [seuil, setSeuil] = useState('');
- 
+
   const add = () => {
     if (!nom.trim() || !actuel || !conso) return;
     const newS = [...stocks, {
@@ -663,20 +666,20 @@ function StocksForm({ data, onSave }) {
     onSave({ ...data, stocks: newS });
     setNom(''); setActuel(''); setConso(''); setSeuil('');
   };
- 
+
   const remove = id => {
     const newS = stocks.filter(s => s.id !== id);
     setS(newS);
     onSave({ ...data, stocks: newS });
   };
- 
+
   const getEtat = s => {
     const ratio = s.actuel / s.conso_semaine;
     if (ratio <= 0.5) return { label: '🔴 Urgent', color: 'var(--red)' };
     if (ratio <= 1)   return { label: '🟡 Alerte', color: 'var(--gold)' };
     return { label: '🟢 OK', color: 'var(--green)' };
   };
- 
+
   return (
     <div>
       <h3 style={{ fontSize: 15, marginBottom: 14, color: 'var(--gold2)' }}>📊 Mes stocks actuels</h3>
@@ -737,14 +740,14 @@ function StocksForm({ data, onSave }) {
     </div>
   );
 }
- 
+
 // ─── CHAT COMMANDES ──────────────────────────────
 function ChatCommandes({ data, usage }) {
   const [messages, setMessages] = useState(data.chat || []);
   const [input, setInput] = useState('');
   const [loading, setLoading] = useState(false);
   const bottomRef = useState(null);
- 
+
   const SUGGESTIONS = [
     "Combien dois-je commander et à qui ?",
     "Quels stocks sont en alerte cette semaine ?",
@@ -752,16 +755,16 @@ function ChatCommandes({ data, usage }) {
     "Génère un bon de commande pour cette semaine",
     "Quel fournisseur contacter en priorité ?",
   ];
- 
+
   const buildContext = () => {
     const f = data.fournisseurs || [];
     const s = data.stocks || [];
     if (f.length === 0 && s.length === 0) return null;
- 
+
     const fTexte = f.length > 0
       ? f.map(x => `- ${x.nom} : ${x.produits}${x.tel ? ` (tél: ${x.tel})` : ''}`).join('\n')
       : 'Aucun fournisseur enregistré';
- 
+
     const sTexte = s.length > 0
       ? s.map(x => {
           const ratio = x.actuel / x.conso_semaine;
@@ -770,40 +773,40 @@ function ChatCommandes({ data, usage }) {
           return `- ${x.nom} : ${x.actuel}${x.unite} en stock | conso ${x.conso_semaine}${x.unite}/sem | état: ${etat}${besoin > 0 ? ` | à commander: ${besoin.toFixed(1)}${x.unite}` : ''}`;
         }).join('\n')
       : 'Aucun stock enregistré';
- 
+
     return `Tu es ZORAN CMO ENGINE v3.0 — assistant pilotage opérationnel de ${usage.resto}.
 Tu aides le restaurateur à gérer ses commandes fournisseurs et ses stocks.
 Réponds en français, de façon claire et actionnable.
 Utilise des emojis pour les niveaux d'urgence (🔴 urgent, 🟡 alerte, 🟢 ok).
- 
+
 FOURNISSEURS ENREGISTRÉS :
 ${fTexte}
- 
+
 STOCKS ACTUELS :
 ${sTexte}
- 
+
 RÈGLE : Si tu recommandes une commande, indique TOUJOURS :
 1. Le fournisseur exact à contacter
 2. La quantité précise à commander
 3. La raison (stock actuel vs besoin semaine)
 4. Si applicable : la formule TA&I à utiliser pour promouvoir ce plat`;
   };
- 
+
   const send = async (msg) => {
     const texte = (msg || input).trim();
     if (!texte) return;
- 
+
     const ctx = buildContext();
     if (!ctx) {
       setMessages(m => [...m, { role: 'user', content: texte }, { role: 'assistant', content: '⚠️ Ajoutez d\'abord vos fournisseurs et stocks dans les onglets ci-dessus pour que je puisse vous aider.' }]);
       return;
     }
- 
+
     const newMessages = [...messages, { role: 'user', content: texte }];
     setMessages(newMessages);
     setInput('');
     setLoading(true);
- 
+
     try {
       const r = await fetch('/api/generate', {
         method: 'POST',
@@ -819,7 +822,7 @@ RÈGLE : Si tu recommandes une commande, indique TOUJOURS :
           infos: 'mode pilotage commandes'
         })
       });
- 
+
       let reponse = '';
       if (r.ok) {
         const d = await r.json();
@@ -827,7 +830,7 @@ RÈGLE : Si tu recommandes une commande, indique TOUJOURS :
       } else {
         reponse = '❌ Erreur de connexion. Vérifiez que l\'app est déployée sur Vercel.';
       }
- 
+
       const withReply = [...newMessages, { role: 'assistant', content: reponse }];
       setMessages(withReply);
       StorePilotage.save({ ...data, chat: withReply.slice(-20) }, usage.email);
@@ -837,11 +840,11 @@ RÈGLE : Si tu recommandes une commande, indique TOUJOURS :
       setLoading(false);
     }
   };
- 
+
   return (
     <div>
       <h3 style={{ fontSize: 15, marginBottom: 14, color: 'var(--gold2)' }}>💬 Assistant Pilotage TA&I</h3>
- 
+
       {messages.length === 0 && (
         <div className="card" style={{ marginBottom: 14 }}>
           <p style={{ fontSize: 13, color: 'var(--text2)', marginBottom: 12 }}>Questions fréquentes — cliquez pour envoyer :</p>
@@ -852,7 +855,7 @@ RÈGLE : Si tu recommandes une commande, indique TOUJOURS :
           </div>
         </div>
       )}
- 
+
       <div style={{ background: 'var(--bg2)', border: '1px solid var(--border)', borderRadius: 'var(--r2)', padding: '1rem', minHeight: 200, maxHeight: 400, overflowY: 'auto', marginBottom: 12, display: 'flex', flexDirection: 'column', gap: 12 }}>
         {messages.length === 0 && (
           <p style={{ fontSize: 13, color: 'var(--text3)', textAlign: 'center', margin: 'auto' }}>
@@ -883,7 +886,7 @@ RÈGLE : Si tu recommandes une commande, indique TOUJOURS :
           </div>
         )}
       </div>
- 
+
       <div style={{ display: 'flex', gap: 10 }}>
         <input
           placeholder="Ex: Combien dois-je commander et à qui ?"
@@ -896,7 +899,7 @@ RÈGLE : Si tu recommandes une commande, indique TOUJOURS :
           Envoyer →
         </button>
       </div>
- 
+
       {messages.length > 0 && (
         <button onClick={() => { setMessages([]); StorePilotage.save({ ...data, chat: [] }, usage.email); }} className="btn-outline" style={{ fontSize: 11, padding: '4px 10px', marginTop: 8 }}>
           Effacer la conversation
@@ -905,25 +908,25 @@ RÈGLE : Si tu recommandes une commande, indique TOUJOURS :
     </div>
   );
 }
- 
+
 // ─── MODULE SMART PILOTAGE COMPLET ───────────────
 function SmartPilotage({ usage, onBack }) {
   const [tab, setTab] = useState('fournisseurs');
   const [data, setData] = useState(() => StorePilotage.get(usage.email));
- 
+
   const save = newData => {
     setData(newData);
     StorePilotage.save(newData, usage.email);
   };
- 
+
   const tabs = [
     { id: 'fournisseurs', label: '📦 Fournisseurs', count: data.fournisseurs?.length || 0 },
     { id: 'stocks', label: '📊 Stocks', count: data.stocks?.length || 0 },
     { id: 'chat', label: '💬 Commandes IA', count: null },
   ];
- 
+
   const alerts = (data.stocks || []).filter(s => s.actuel <= s.seuil_alerte).length;
- 
+
   return (
     <div style={{ maxWidth: 860, margin: '0 auto' }} className="fade-in">
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20, flexWrap: 'wrap', gap: 10 }}>
@@ -940,7 +943,7 @@ function SmartPilotage({ usage, onBack }) {
           <button className="btn-outline" onClick={onBack} style={{ fontSize: 13 }}>← Retour</button>
         </div>
       </div>
- 
+
       <div style={{ display: 'flex', gap: 8, marginBottom: 20, borderBottom: '1px solid var(--border)', paddingBottom: 12 }}>
         {tabs.map(t => (
           <button
@@ -967,28 +970,28 @@ function SmartPilotage({ usage, onBack }) {
           </button>
         ))}
       </div>
- 
+
       {tab === 'fournisseurs' && <FournisseursForm data={data} onSave={save} />}
       {tab === 'stocks' && <StocksForm data={data} onSave={save} />}
       {tab === 'chat' && <ChatCommandes data={data} usage={usage} />}
     </div>
   );
 }
- 
+
 function App() {
   const [screen,setScreen]=useState('loading');
   const [usage,setUsage]=useState(()=>Store.usage());
   const [result,setResult]=useState(null);
   const [lastForm,setLastForm]=useState(null);
- 
+
   useEffect(()=>{
     if(window.location.hash==='#admin'){setScreen('admin-login');return;}
     setScreen(usage.email?'form':'home');
   },[]);
- 
+
   const save=v=>{setUsage(v);Store.save(v);};
   const needsPay=!Store.canGen(usage);
- 
+
   return (
     <div style={{minHeight:'100vh'}}>
       <header style={{borderBottom:'1px solid var(--border)',padding:'14px 24px',display:'flex',justifyContent:'space-between',alignItems:'center',background:'var(--bg2)',position:'sticky',top:0,zIndex:100}}>
@@ -1038,9 +1041,8 @@ function App() {
     </div>
   );
 }
- 
+
 ReactDOM.createRoot(document.getElementById('root')).render(<App/>);
 </script>
 </body>
 </html>
-
