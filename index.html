@@ -441,7 +441,7 @@ function UserModal({user, onClose, onSave, onDelete}) {
           ) : (
             <div style={{background:'var(--red2)',border:'1px solid var(--red)',borderRadius:'var(--r)',padding:'10px 14px',display:'flex',alignItems:'center',justifyContent:'space-between',gap:10}}>
               <span style={{fontSize:13,color:'var(--red)'}}>Confirmer la suppression de {g('Email')} ?</span>
-              <div style={{display:'flex',gap:8',flexShrink:0}}>
+              <div style={{display:'flex',gap:8,flexShrink:0}}>
                 <button onClick={doDelete} disabled={deleting} style={{background:'var(--red)',color:'#fff',border:'none',borderRadius:'var(--r)',padding:'6px 12px',fontSize:12,cursor:'pointer',fontWeight:600}}>
                   {deleting?<span className="spinner"/>:'Oui, supprimer'}
                 </button>
